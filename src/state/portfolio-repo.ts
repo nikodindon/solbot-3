@@ -196,6 +196,16 @@ export function reducePositionFifo(
       );
     }
 
+    // Cas limite : une position **sans lots** (base restaurée, état
+    // partiellement reconstruit). La FIFO n'a rien à consommer, mais la
+    // position doit tout de même être clôturée — sinon elle resterait
+    // ouverte pour toujours.
+    if (lots.length === 0 && sold === 0) {
+      realized = (priceUsd - position.avgEntryUsd) * position.qty;
+      sold = position.qty;
+      consumedCost = position.investedUsd;
+    }
+
     const newQty = Math.max(0, position.qty - sold);
     // Le coût de revient restant est celui des lots **non consommés** :
     // une moyenne au prorata ferait dériver le prix moyen.

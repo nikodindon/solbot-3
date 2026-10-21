@@ -14,6 +14,7 @@ import { runPrice } from "./cli/price.js";
 import { runReport } from "./cli/report.js";
 import { runScan } from "./cli/scan.js";
 import { runStart } from "./cli/start.js";
+import { runSwap } from "./cli/swap.js";
 import { runWatch } from "./cli/watch.js";
 import { getVersionInfo } from "./cli/version.js";
 import { messageOf } from "./utils/errors.js";
@@ -303,6 +304,38 @@ program
           intervalS: options.interval,
           durationS: options.duration,
           once: options.once === true,
+        });
+      } catch (error) {
+        console.error(`  ✘ ${messageOf(error)}`);
+        process.exitCode = 1;
+      }
+    },
+  );
+
+program
+  .command("swap")
+  .description("swap manuel, avec les mêmes garde-fous que le bot")
+  .argument("<entrée>", "symbole ou mint vendu")
+  .argument("<sortie>", "symbole ou mint acheté")
+  .argument("<montant| max>", "montant en USDC, ou « max » pour tout vendre")
+  .option("--dry-run", "devis réel + simulation, aucun ordre envoyé", false)
+  .option("--live", "ordre réel (exige confirm_live, le garde-fou et une confirmation)", false)
+  .option("--yes", "valide la confirmation (automatisation)", false)
+  .action(
+    async (
+      input: string,
+      output: string,
+      amount: string,
+      options: { dryRun?: boolean; live?: boolean; yes?: boolean },
+    ) => {
+      try {
+        await runSwap({
+          root: getProjectRoot(),
+          input,
+          output,
+          amount,
+          mode: options.live ? "live" : "dry_run",
+          yes: options.yes === true,
         });
       } catch (error) {
         console.error(`  ✘ ${messageOf(error)}`);

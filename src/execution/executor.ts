@@ -39,7 +39,7 @@ export interface TradeIntent {
 
 export interface ExecuteResult {
   ok: boolean;
-  status: "filled" | "simulated" | "failed" | "rejected";
+  status: "filled" | "simulated" | "validated_order" | "failed" | "rejected";
   qty: number;
   spendUsd: number;
   proceedsUsd: number;

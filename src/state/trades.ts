@@ -4,7 +4,7 @@ import { queryAll, queryGet } from "./sql.js";
 /** Journal des exécutions. */
 
 export type TradeSide = "buy" | "sell";
-export type TradeStatus = "simulated" | "filled" | "failed" | "reconciled";
+export type TradeStatus = "simulated" | "validated_order" | "filled" | "failed" | "reconciled";
 
 export interface TradeRecord {
   tsMs: number;

@@ -1,4 +1,7 @@
+import { Connection } from "@solana/web3.js";
 import { Engine, FileStopSwitch, type MarketQuote, type MarketSource } from "../engine/engine.js";
+import { SwapApi } from "../jupiter/swap.js";
+import { SOL_MINT, USDC_MINT } from "../constants.js";
 import { createRegistry } from "../monitoring/metrics.js";
 import { MonitoringServer } from "../monitoring/server.js";
 import { Supervisor } from "../monitoring/supervisor.js";
@@ -6,9 +9,14 @@ import { TelegramController } from "../notify/controller.js";
 import { TelegramPoller } from "../notify/poller.js";
 import { TelegramNotifier, noopNotifier } from "../notify/telegram.js";
 import { createBackup } from "../state/backup.js";
+import { evaluateGuard } from "../risk/guard.js";
+import { fetchChainBalances, reconcileBalances } from "../solana/reconcile.js";
+import { EnvSigner } from "../wallet/signer.js";
 import { KvCash } from "../execution/cash.js";
 import { DEFAULT_COST_CONFIG, type CostConfig } from "../execution/costs.js";
 import { PaperExecutor } from "../execution/executor.js";
+import type { CashLedger, Executor } from "../execution/executor.js";
+import { JupiterExecutor } from "../execution/jupiter-executor.js";
 import { DbCandleSource } from "../market/candles.js";
 import { Poller, type PollResult } from "../market/poller.js";
 import { RiskManager } from "../risk/risk-manager.js";
@@ -36,6 +44,8 @@ export interface StartOptions {
   root?: string;
   /** Mode forcé (CLI). */
   mode?: "paper" | "dry_run" | "live";
+  /** Valide les confirmations interactives (automatisation). */
+  yes?: boolean;
   /** Intervalle entre deux ticks (secondes). */
   intervalS?: number;
   /** Durée totale (secondes). 0 = jusqu'à l'interruption. */
@@ -63,18 +73,48 @@ class PollerMarketSource implements MarketSource {
   }
 }
 
+/** Invite de confirmation en ligne de commande. */
+async function confirmLive(question: string): Promise<string> {
+  const { createInterface } = await import("node:readline/promises");
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    return (await rl.question(question)).trim().toLowerCase();
+  } finally {
+    rl.close();
+  }
+}
+
 export async function runStart(options: StartOptions = {}): Promise<void> {
   const runtime = createRuntime({ root: options.root, mode: options.mode });
   const mode = runtime.mode;
 
-  if (mode !== "paper") {
-    fail(
-      `le mode « ${mode} » n'est pas encore disponible`,
-      "l'exécution Jupiter (dry-run et live) arrive en phase 5",
-    );
-    closeRuntime(runtime);
-    process.exitCode = 1;
-    return;
+  // ── Garde-fous du mode live ──────────────────────────────────────────
+  if (mode === "live") {
+    if (!runtime.config.confirm_live) {
+      fail("live refusé", "confirm_live n'est pas activé dans la configuration");
+      closeRuntime(runtime);
+      process.exitCode = 1;
+      return;
+    }
+
+    const guard = evaluateGuard({ db: runtime.db, cfg: runtime.config });
+    if (!guard.ok) {
+      fail("live refusé par le garde-fou", guard.reasons.join(" ; "));
+      closeRuntime(runtime);
+      process.exitCode = 1;
+      return;
+    }
+    ok("garde-fou", "tous les critères bloquants sont remplis");
+
+    if (options.yes !== true) {
+      const answer = await confirmLive("⚠️  MODE LIVE — fonds réels.\nConfirmer ? (oui/non) : ");
+      if (answer !== "oui") {
+        fail("live annulé", "aucun ordre n'a été envoyé");
+        closeRuntime(runtime);
+        process.exitCode = 1;
+        return;
+      }
+    }
   }
 
   const intervalS = options.intervalS ?? runtime.config.loop_interval_s;
@@ -95,12 +135,99 @@ export async function runStart(options: StartOptions = {}): Promise<void> {
     priorityFeeSol: runtime.config.paper.priority_fee_sol,
   };
 
-  const cash = new KvCash(runtime.db, runtime.config.paper.initial_usdc);
-  cash.seed(runtime.config.paper.initial_usdc);
+  // ── Cash et exécution, selon le mode ─────────────────────────────────
+  let cash: CashLedger;
+  let executor: Executor;
 
-  const executor = new PaperExecutor({ db: runtime.db, mode: "paper", cash, costs });
+  if (mode === "live" || mode === "dry_run") {
+    const connection = new Connection(
+      runtime.env.SOLANA_RPC_URL ?? "https://api.mainnet-beta.solana.com",
+      "confirmed",
+    );
+    const signer = await EnvSigner.fromEnv(process.env);
+
+    // En dry-run, le portefeuille reste virtuel : on ne simule que
+    // l'**exécution** des ordres, pas leur effet sur la chaîne.
+    const virtualCash = new KvCash(runtime.db, runtime.config.paper.initial_usdc);
+    virtualCash.seed(runtime.config.paper.initial_usdc);
+    cash = virtualCash;
+
+    executor = new JupiterExecutor({
+      db: runtime.db,
+      swapApi: new SwapApi(runtime.jupiter),
+      connection,
+      signer,
+      mode: mode === "live" ? "live" : "dry_run",
+      retries: runtime.config.execution.retries,
+      slippageBumpFactor: 2,
+      maxSlippageBps: runtime.config.risk.max_slippage_bps,
+      slippageMode: runtime.config.execution.slippage,
+      adaptive: {
+        timeframe: "15m",
+        period: 14,
+        multiplier: 1,
+        minBps: 10,
+        maxBps: runtime.config.risk.max_slippage_bps,
+      },
+      confirm:
+        mode === "live"
+          ? async (summary) => {
+              note(summary);
+              if (options.yes === true) return true;
+              return (await confirmLive("Confirmer cet ordre ? (oui/non) : ")) === "oui";
+            }
+          : undefined,
+    });
+  } else {
+    const virtualCash = new KvCash(runtime.db, runtime.config.paper.initial_usdc);
+    virtualCash.seed(runtime.config.paper.initial_usdc);
+    cash = virtualCash;
+    executor = new PaperExecutor({ db: runtime.db, mode: "paper", cash, costs });
+  }
+
   const risk = new RiskManager(runtime.config.risk, runtime.config.allocator, costs);
   const strategies = enabledStrategies(runtime.config.strategies);
+
+  // ── Réconciliation on-chain (live) ───────────────────────────────────
+  // Au démarrage en live, **la chaîne fait foi** : les soldes réels sont
+  // comparés au portefeuille local, et chaque divergence est journalisée.
+  if (mode === "live") {
+    const connection = new Connection(
+      runtime.env.SOLANA_RPC_URL ?? "https://api.mainnet-beta.solana.com",
+      "confirmed",
+    );
+    const signer = await EnvSigner.fromEnv(process.env);
+    const prices = await runtime.priceApi.refresh(
+      listWatchlistMints(runtime.db).concat([SOL_MINT, USDC_MINT]),
+      { fresh: true },
+    );
+    const priceMap = new Map<string, number>();
+    for (const [mint, row] of prices) priceMap.set(mint, row.usdPrice);
+
+    const balances = await fetchChainBalances(connection, signer.address, USDC_MINT);
+    const reconciliation = reconcileBalances({
+      db: runtime.db,
+      connection,
+      owner: signer.address,
+      balances,
+      baseMint: USDC_MINT,
+      defaultStopLossPct: runtime.config.risk.stop_loss_pct,
+      defaultTakeProfitPct: runtime.config.risk.take_profit_pct,
+      prices: priceMap,
+    });
+
+    if (reconciliation.entries.length > 0) {
+      warn(
+        "réconciliation",
+        `${reconciliation.adopted} adoptée(s), ${reconciliation.adjusted} ajustée(s), ${reconciliation.closed} clôturée(s), ${reconciliation.skipped} ignorée(s)`,
+      );
+      for (const entry of reconciliation.entries) {
+        note(`${entry.action} — ${entry.symbol} : ${entry.note}`);
+      }
+    } else {
+      ok("réconciliation", "portefeuille local aligné sur la chaîne");
+    }
+  }
 
   const market = new PollerMarketSource(poller, (result) => {
     if (!result.ok) {
@@ -112,7 +239,7 @@ export async function runStart(options: StartOptions = {}): Promise<void> {
   const engine = new Engine({
     db: runtime.db,
     cfg: runtime.config,
-    mode: "paper",
+    mode,
     strategies,
     // L'allocateur est actif dès qu'il y a **plusieurs** stratégies : le
     // capital réel n'est alors confié qu'à la stratégie pilote.
@@ -195,7 +322,14 @@ export async function runStart(options: StartOptions = {}): Promise<void> {
   }
 
   heading("solbot3 start — moteur en mode paper");
-  info("mode", "paper (aucun ordre envoyé, portefeuille virtuel)");
+  info(
+    "mode",
+    mode === "live"
+      ? "LIVE — ordres réels sur la chaîne"
+      : mode === "dry_run"
+        ? "dry-run (vrais devis, transaction simulée, aucun ordre envoyé)"
+        : "paper (aucun ordre envoyé, portefeuille virtuel)",
+  );
   info("intervalle", `${intervalS} s`);
   info("stratégies", strategies.map((s) => s.name).join(", ") || "aucune");
   info(
