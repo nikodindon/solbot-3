@@ -2,6 +2,8 @@ import type { StrategiesConfig } from "../config/schema.js";
 import { DcaRotationStrategy, DCA_ROTATION_DEFAULTS } from "./dca-rotation.js";
 import { GRID_DEFAULTS, GridStrategy } from "./grid.js";
 import { MEAN_REVERSION_DEFAULTS, MeanReversionStrategy } from "./mean-reversion.js";
+import { RegimeSwitchStrategy } from "./regime-switch.js";
+import { RelativeStrengthStrategy } from "./relative-strength.js";
 import { TREND_BREAKOUT_DEFAULTS, TrendBreakoutStrategy } from "./trend-breakout.js";
 import type { Strategy } from "./types.js";
 
@@ -21,34 +23,30 @@ export function buildStrategies(cfg: StrategiesConfig): BuiltStrategy[] {
   const built: BuiltStrategy[] = [];
 
   const trend = cfg.trend_breakout;
-  built.push({
-    enabled: trend.enabled,
-    strategy: new TrendBreakoutStrategy(
-      {
-        emaFast: trend.params.ema_fast,
-        emaSlow: trend.params.ema_slow,
-        breakoutLookback: trend.params.breakout_lookback,
-        rsiPeriod: trend.params.rsi_period,
-        rsiMax: trend.params.rsi_max,
-        volumeMult: trend.params.volume_mult,
-        atrStopMult: trend.params.atr_stop_mult,
-      },
-      trend.timeframe,
-    ),
-  });
+  const trendStrategy = new TrendBreakoutStrategy(
+    {
+      emaFast: trend.params.ema_fast,
+      emaSlow: trend.params.ema_slow,
+      breakoutLookback: trend.params.breakout_lookback,
+      rsiPeriod: trend.params.rsi_period,
+      rsiMax: trend.params.rsi_max,
+      volumeMult: trend.params.volume_mult,
+      atrStopMult: trend.params.atr_stop_mult,
+    },
+    trend.timeframe,
+  );
+  built.push({ enabled: trend.enabled, strategy: trendStrategy });
 
   const meanRev = cfg.mean_reversion;
-  built.push({
-    enabled: meanRev.enabled,
-    strategy: new MeanReversionStrategy(
-      {
-        window: meanRev.params.window,
-        zEntry: meanRev.params.z_entry,
-        zExit: meanRev.params.z_exit,
-      },
-      meanRev.timeframe,
-    ),
-  });
+  const meanRevStrategy = new MeanReversionStrategy(
+    {
+      window: meanRev.params.window,
+      zEntry: meanRev.params.z_entry,
+      zExit: meanRev.params.z_exit,
+    },
+    meanRev.timeframe,
+  );
+  built.push({ enabled: meanRev.enabled, strategy: meanRevStrategy });
 
   const grid = cfg.grid;
   built.push({
@@ -70,6 +68,29 @@ export function buildStrategies(cfg: StrategiesConfig): BuiltStrategy[] {
       driftTriggerPct: dca.params.drift_trigger_pct,
       topupUsdc: dca.params.topup_usdc,
     }),
+  });
+
+  const relative = cfg.relative_strength;
+  built.push({
+    enabled: relative.enabled,
+    strategy: new RelativeStrengthStrategy(
+      {
+        lookbackH: relative.params.lookback_h,
+        topN: relative.params.top_n,
+        rebalanceH: relative.params.rebalance_h,
+      },
+      relative.timeframe,
+    ),
+  });
+
+  const regimeSwitch = cfg.regime_switch;
+  built.push({
+    enabled: regimeSwitch.enabled,
+    strategy: new RegimeSwitchStrategy([
+      // La tendance suit le mouvement, le range joue le retour à la moyenne.
+      { strategy: trendStrategy, regimes: ["trending"] },
+      { strategy: meanRevStrategy, regimes: ["ranging"] },
+    ]),
   });
 
   return built;
@@ -109,6 +130,15 @@ export function strategySetDescriptor(cfg: StrategiesConfig): string {
     dca_rotation: {
       enabled: cfg.dca_rotation.enabled,
       params: cfg.dca_rotation.params,
+    },
+    relative_strength: {
+      enabled: cfg.relative_strength.enabled,
+      timeframe: cfg.relative_strength.timeframe,
+      params: cfg.relative_strength.params,
+    },
+    regime_switch: {
+      enabled: cfg.regime_switch.enabled,
+      params: cfg.regime_switch.params,
     },
   });
 }

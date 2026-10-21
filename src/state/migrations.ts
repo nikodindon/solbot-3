@@ -259,6 +259,54 @@ export const MIGRATIONS: Migration[] = [
       CREATE INDEX IF NOT EXISTS idx_backtest_trades_run ON backtest_trades (run_id, ts_ms);
     `,
   },
+  {
+    version: 6,
+    name: "shadow-portfolios",
+    sql: `
+      -- Portefeuilles fantômes : une instance par stratégie active.
+      -- Chaque stratégie « joue » son propre portefeuille en parallèle du
+      -- capital réel ; l'allocateur choisit ensuite celle qui pilote.
+      CREATE TABLE IF NOT EXISTS shadow_trades (
+        id           INTEGER PRIMARY KEY AUTOINCREMENT,
+        shadow       TEXT NOT NULL,
+        ts_ms        INTEGER NOT NULL,
+        mint         TEXT NOT NULL,
+        side         TEXT NOT NULL,
+        qty          REAL NOT NULL,
+        price_usd    REAL NOT NULL,
+        notional_usd REAL NOT NULL,
+        fee_usd      REAL NOT NULL DEFAULT 0,
+        pnl_usd      REAL
+      );
+      CREATE INDEX IF NOT EXISTS idx_shadow_trades_shadow_ts ON shadow_trades (shadow, ts_ms);
+
+      -- Un point de NAV par stratégie et par tick.
+      CREATE TABLE IF NOT EXISTS shadow_nav (
+        shadow  TEXT NOT NULL,
+        ts_ms   INTEGER NOT NULL,
+        nav_usd REAL NOT NULL,
+        PRIMARY KEY (shadow, ts_ms)
+      );
+      CREATE INDEX IF NOT EXISTS idx_shadow_nav_shadow_ts ON shadow_nav (shadow, ts_ms);
+    `,
+  },
+  {
+    version: 7,
+    name: "events",
+    sql: `
+      -- Journal de supervision : alertes, erreurs, backups, actions.
+      CREATE TABLE IF NOT EXISTS events (
+        id       INTEGER PRIMARY KEY AUTOINCREMENT,
+        ts_ms    INTEGER NOT NULL,
+        level    TEXT NOT NULL,
+        kind     TEXT NOT NULL,
+        message  TEXT NOT NULL,
+        details  TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_events_ts ON events (ts_ms DESC);
+      CREATE INDEX IF NOT EXISTS idx_events_kind ON events (kind, ts_ms DESC);
+    `,
+  },
 ];
 
 /** Version du schéma actuellement appliquée (0 si base vierge). */

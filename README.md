@@ -919,20 +919,20 @@ Une phase ne commence que lorsque la précédente est verte sur sa **Definition 
 
 ### Phase 4 — Allocateur, lab, supervision (v0.5)
 
-- [ ] Portefeuilles fantômes : chaque stratégie activée en shadow
-- [ ] Score glissant (Sharpe ou ratio gain/risque sur fenêtre) et seuil d'échantillon minimal
-- [ ] Allocateur avec hystérésis et filtre d'edge net (`min_edge_over_costs`)
-- [ ] Méta-stratégie `regime_switch`
-- [ ] Stratégie `relative_strength`
-- [ ] `lab/` : base séparée, mode paper codé en dur, mise plafonnée, stop-loss obligatoire
-- [ ] `results/experiments.md` alimenté automatiquement par le lab
-- [ ] Garde-fou live (§9.3) : vérification de l'empreinte et des critères
-- [ ] Rapport de parité paper / backtest
-- [ ] `/healthz` et `/metrics` (registre maison, sans dépendance)
-- [ ] Telegram : notifications et commandes, chat unique autorisé
-- [ ] Alertes avec cooldown persisté
-- [ ] Backups SQLite (`VACUUM INTO`, rotation) et restauration vérifiée
-- [ ] Docker et systemd
+- [x] Portefeuilles fantômes : chaque stratégie activée en shadow
+- [x] Score glissant (Sharpe ou ratio gain/risque sur fenêtre) et seuil d'échantillon minimal
+- [x] Allocateur avec hystérésis et filtre d'edge net (`min_edge_over_costs`)
+- [x] Méta-stratégie `regime_switch`
+- [x] Stratégie `relative_strength`
+- [x] `lab/` : base séparée, mode paper codé en dur, mise plafonnée, stop-loss obligatoire
+- [x] `results/experiments.md` alimenté automatiquement par le lab
+- [x] Garde-fou live (§9.3) : vérification de l'empreinte et des critères
+- [x] Rapport de parité paper / backtest
+- [x] `/healthz` et `/metrics` (registre maison, sans dépendance)
+- [x] Telegram : notifications et commandes, chat unique autorisé
+- [x] Alertes avec cooldown persisté
+- [x] Backups SQLite (`VACUUM INTO`, rotation) et restauration vérifiée
+- [x] Docker et systemd
 
 **DoD :** l'allocateur choisit une stratégie pilote et la change uniquement au-delà de l'hystérésis ; le garde-fou refuse le live pour une configuration non testée et l'accepte pour une configuration conforme ; 7 jours d'uptime en paper sans intervention ; kill-switch déclenché depuis Telegram ; restauration de backup validée sur une machine neuve.
 

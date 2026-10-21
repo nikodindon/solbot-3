@@ -10,7 +10,16 @@ import { queryAll } from "./sql.js";
  */
 
 export type DecisionKind =
-  "signal" | "reject" | "trade" | "error" | "exit" | "note" | "regime" | "guard";
+  | "signal"
+  | "reject"
+  | "trade"
+  | "error"
+  | "exit"
+  | "note"
+  | "regime"
+  | "guard"
+  /** Choix de la stratégie pilote par l'allocateur. */
+  | "alloc";
 
 export interface Decision {
   tsMs: number;

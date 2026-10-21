@@ -62,4 +62,9 @@ export const STATE_KEYS = {
   lastTradeTsByMint: "last_trade_ts_by_mint",
   tickCount: "tick_count",
   solPrice0: "sol_price_0",
+  allocatedStrategy: "allocated_strategy",
+  manualPaused: "manual_paused",
+  lastBackupDay: "last_backup_day",
+  lastBackupAtMs: "last_backup_at_ms",
+  lastDailyReportDay: "last_daily_report_day",
 } as const;

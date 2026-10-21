@@ -14,7 +14,7 @@ Suivi de l'avancement, phase par phase. La spécification complète est dans
 | 1 | v0.2 | Données : Price v3, Tokens v2, SQLite, scan, watch | Nul | ✅ **terminée** |
 | 2 | v0.3 | Backtest multi-fenêtres et import historique | Nul | ✅ **terminée** |
 | 3 | v0.4 | Moteur paper, régimes, stratégies, RiskManager | Nul | ✅ **terminée** |
-| 4 | v0.5 | Allocateur shadow, lab, rapports, Telegram, supervision | Nul | ⬜ à faire |
+| 4 | v0.5 | Allocateur shadow, lab, rapports, Telegram, supervision | Nul | ✅ **terminée** |
 | 5 | v0.6 | Exécution Jupiter : dry-run puis micro-live | Faible, encadré | ⬜ à faire |
 | 6 | v0.7 | Dashboard complet et observabilité avancée | Faible | ⬜ à faire |
 | 7 | v1.0 | Ordres on-chain, keystore, chemins avancés, walk-forward | Encadré, mature | ⬜ à faire |
@@ -225,20 +225,60 @@ orpheline et avec un journal cohérent ; arrêt propre vérifié.
 
 ## Phase 4 — Allocateur, lab, supervision (v0.5)
 
-- [ ] Portefeuilles fantômes : chaque stratégie activée en shadow
-- [ ] Score glissant (Sharpe ou ratio gain/risque sur fenêtre) et seuil d'échantillon minimal
-- [ ] Allocateur avec hystérésis et filtre d'edge net (`min_edge_over_costs`)
-- [ ] Méta-stratégie `regime_switch`
-- [ ] Stratégie `relative_strength`
-- [ ] `lab/` : base séparée, mode paper codé en dur, mise plafonnée, stop-loss obligatoire
-- [ ] `results/experiments.md` alimenté automatiquement par le lab
-- [ ] Garde-fou live (§9.3) : vérification de l'empreinte et des critères
-- [ ] Rapport de parité paper / backtest
-- [ ] `/healthz` et `/metrics` (registre maison, sans dépendance)
-- [ ] Telegram : notifications et commandes, chat unique autorisé
-- [ ] Alertes avec cooldown persisté
-- [ ] Backups SQLite (`VACUUM INTO`, rotation) et restauration vérifiée
-- [ ] Docker et systemd
+- [x] Portefeuilles fantômes : chaque stratégie activée en shadow
+- [x] Score glissant (Sharpe ou ratio gain/risque sur fenêtre) et seuil d'échantillon minimal
+- [x] Allocateur avec hystérésis et filtre d'edge net (`min_edge_over_costs`)
+- [x] Méta-stratégie `regime_switch`
+- [x] Stratégie `relative_strength`
+- [x] `lab/` : base séparée, mode paper codé en dur, mise plafonnée, stop-loss obligatoire
+- [x] `results/experiments.md` alimenté automatiquement par le lab
+- [x] Garde-fou live (§9.3) : vérification de l'empreinte et des critères
+- [x] Rapport de parité paper / backtest
+- [x] `/healthz` et `/metrics` (registre maison, sans dépendance)
+- [x] Telegram : notifications et commandes, chat unique autorisé
+- [x] Alertes avec cooldown persisté
+- [x] Backups SQLite (`VACUUM INTO`, rotation) et restauration vérifiée
+- [x] Docker et systemd
+
+> ✅ **Vérifié le 2026-10-21** — l'allocateur choisit la pilote et ne la
+> change qu'au-delà de l'hystérésis (8 tests) ; le garde-fou **refuse** le
+> live pour une configuration non testée et l'**accepte** pour une
+> configuration conforme (`solbot3 guard` affiche les six critères) ;
+> `/healthz` renvoie 200 et le bon état, `/metrics` sort du Prometheus
+> valide ; le kill-switch Telegram a été testé (et a révélé un bug de
+> masquage de variable qui le faisait échouer **silencieusement**) ; la
+> sauvegarde `VACUUM INTO` puis la restauration vérifiée ont été validées
+> sur une base neuve ; l'image Docker se construit et répond.
+
+### Notes de conception (Phase 4)
+
+- **Un shadow n'est pas une simulation simplifiée** : c'est le même moteur
+  de décision appliqué à un livre virtuel, avec les **mêmes coûts**. Un
+  shadow qui triche sur les frais ne vaut rien comme instrument de
+  comparaison.
+- **L'hystérésis est relative** : le challenger doit faire
+  `pilote × (1 + hystérésis)`. En points absolus, une pilote sous zéro
+  bloquerait tout remplacement — et le portefeuille resterait bloqué sur une
+  stratégie perdante.
+- **Le seuil d'échantillon sert à arbitrer, pas à interdire de trader** :
+  avec une seule stratégie active, elle pilote immédiatement. Sinon, le
+  bot serait inactif pendant des semaines le temps que le shadow accumule
+  assez de trades.
+- **Le garde-fou live compare l'empreinte ET le timeframe** : deux runs de
+  la même configuration à des timeframes différents ne mesurent pas la même
+  chose. Un backtest 15 m ne valide pas une configuration jouée en 1 h.
+- **Le lab est paper par construction** : `src/lab/` ne contient aucun
+  chemin d'exécution réelle, sa base est séparée, la mise est plafonnée
+  par construction (via `max_position_pct`), et un prix non corroboré par
+  une seconde source est rejeté — on ne valorise pas une position sur un
+  prix que quelqu'un peut choisir.
+
+### Reste à faire en Phase 4
+
+- [ ] 7 jours d'uptime en paper sans intervention *(le paper tourne, à
+  confirmer au bout de 7 jours)*
+- [ ] Test du kill-switch Telegram contre le **vrai** bot (le test unitaire
+  couvre la commande, pas le transport)
 
 **DoD :** l'allocateur choisit une stratégie pilote et la change uniquement au
 delà de l'hystérésis ; le garde-fou refuse le live pour une configuration non

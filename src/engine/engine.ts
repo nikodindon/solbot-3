@@ -7,6 +7,7 @@ export type RunMode = Mode | "backtest";
 import { buildPortfolioView, timeframeMs } from "../portfolio/portfolio.js";
 import type { RiskFlags, RiskManager } from "../risk/risk-manager.js";
 import type { MarketSnapshot, Signal, Strategy } from "../strategies/types.js";
+import { runShadows } from "../allocator/shadow-runner.js";
 import type { CandleSource } from "../market/candles.js";
 import { classifyRegime, type RegimeConfig, type RegimeResult } from "../market/regime.js";
 import type { ImportedCandle } from "../state/imported-candles.js";
@@ -17,6 +18,7 @@ import { kvGet, kvGetNumber, kvSet, kvSetNumber, STATE_KEYS } from "../state/kv.
 import { listWatchlistMints } from "../state/market-data.js";
 import { listPositions } from "../state/portfolio-repo.js";
 import type { CashLedger, Executor } from "../execution/executor.js";
+import type { CostConfig } from "../execution/costs.js";
 
 /**
  * Le moteur.
@@ -56,6 +58,18 @@ export interface EngineDeps {
   candles: CandleSource;
   /** Détection de régime (seam) — injectable pour les tests. */
   regime?: (candles: ImportedCandle[], cfg: RegimeConfig) => RegimeResult;
+  /**
+   * Allocateur (seam). Quand il est présent, le capital réel n'est confié
+   * qu'à la **stratégie pilote** choisie parmi les portefeuilles fantômes.
+   * Quand il est absent, toutes les stratégies sont candidates.
+   */
+  allocator?: {
+    db: DB;
+    allocator: AppConfig["allocator"];
+    risk: AppConfig["risk"];
+    costs: CostConfig;
+    initialCashUsd: number;
+  };
   executor: Executor;
   risk: RiskManager;
   cash: CashLedger;
@@ -74,6 +88,8 @@ export interface TickReport {
   navUsd: number;
   cashUsd: number;
   positionsUsd: number;
+  /** Nombre de positions ouvertes. */
+  positionsOpen: number;
   realizedPnlUsd: number;
   drawdownPct: number;
   executed: { buys: number; sells: number };
@@ -270,7 +286,54 @@ export class Engine {
           });
         }
 
+        // ── Phase 4 : portefeuilles fantômes et allocation ────────────
+        //
+        // Chaque stratégie joue son propre portefeuille en parallèle, avec
+        // les mêmes coûts. L'une d'elles est choisie comme **pilote** : c'est
+        // la seule qui décide du capital réel.
+        let pilot: string | null = null;
+
+        if (this.deps.allocator) {
+          const shadow = runShadows(
+            {
+              db: this.deps.allocator.db,
+              strategies: this.deps.strategies,
+              allocator: this.deps.allocator.allocator,
+              risk: this.deps.allocator.risk,
+              costs: this.deps.allocator.costs,
+              initialCashUsd: this.deps.allocator.initialCashUsd,
+            },
+            {
+              tsMs,
+              prices,
+              evaluate: (strategy, shadowPortfolio) => strategy.evaluate(snapshot, shadowPortfolio),
+            },
+          );
+
+          pilot = shadow.pilot;
+          record("alloc", shadow.decision.reason, {
+            data: {
+              pilot: shadow.pilot,
+              previousPilot: shadow.decision.previousPilot,
+              changed: shadow.decision.changed,
+              scores: shadow.scores.map((score) => ({
+                name: score.name,
+                scorePct: score.scorePct,
+                trades: score.trades,
+                eligible: score.eligible,
+                reason: score.reason,
+              })),
+            },
+          });
+          for (const note of shadow.notes) {
+            record("note", note.note, { strategy: note.strategy });
+          }
+        }
+
+        // ── Phase 5 : la stratégie pilote décide, sur le livre réel ────
         for (const strategy of this.deps.strategies) {
+          if (pilot !== null && strategy.name !== pilot) continue;
+
           const evaluated = strategy.evaluate(snapshot, portfolio);
           for (const note of evaluated.notes) {
             record("note", note, { strategy: strategy.name });
@@ -286,6 +349,11 @@ export class Engine {
             });
             candidates.push({ signal, strategy: strategy.name });
           }
+        }
+
+        if (pilot === null && this.deps.allocator) {
+          record("guard", "aucune stratégie pilote — aucune entrée");
+          blockedBy = "no_pilot";
         }
 
         // Une seule entrée par tick : la meilleure confiance.
@@ -410,6 +478,7 @@ export class Engine {
         navUsd: finalView.navUsd,
         cashUsd: finalView.cashUsd,
         positionsUsd,
+        positionsOpen: finalPositions.length,
         realizedPnlUsd: realized,
         drawdownPct: finalDrawdown,
         executed,
@@ -600,6 +669,7 @@ export class Engine {
       navUsd: 0,
       cashUsd: 0,
       positionsUsd: 0,
+      positionsOpen: 0,
       realizedPnlUsd: 0,
       drawdownPct: 0,
       executed: { buys: 0, sells: 0 },
@@ -617,6 +687,7 @@ export class Engine {
       navUsd: 0,
       cashUsd: 0,
       positionsUsd: 0,
+      positionsOpen: 0,
       realizedPnlUsd: 0,
       drawdownPct: 0,
       executed: { buys: 0, sells: 0 },

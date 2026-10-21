@@ -4,8 +4,12 @@ import "./utils/warnings.js";
 
 import { Command } from "commander";
 import { runBacktestImport, runBacktestRun, runBacktestWalkForward } from "./cli/backtest.js";
+import { runBackup } from "./cli/backup.js";
 import { runDoctor, printDoctor } from "./cli/doctor.js";
+import { runGuard } from "./cli/guard.js";
+import { runLabCommand } from "./cli/lab.js";
 import { runInit } from "./cli/init.js";
+import { runParity } from "./cli/parity.js";
 import { runPrice } from "./cli/price.js";
 import { runReport } from "./cli/report.js";
 import { runScan } from "./cli/scan.js";
@@ -19,6 +23,11 @@ import { getProjectRoot } from "./utils/paths.js";
 // Le fichier `.env` est chargé au lancement de la CLI. Les variables déjà
 // présentes dans l'environnement ne sont jamais écrasées.
 loadEnvFile(getProjectRoot());
+
+/** Collecte les options répétables (`--strategy a --strategy b`). */
+function collect(value: string, previous: string[]): string[] {
+  return [...previous, value];
+}
 
 const program = new Command();
 
@@ -188,6 +197,69 @@ program
         },
       ),
   );
+
+program
+  .command("backup")
+  .description("sauvegarde la base (VACUUM INTO), liste ou restaure")
+  .option("--list", "liste les sauvegardes", false)
+  .option("--restore <fichier>", "restaure une sauvegarde")
+  .action((options: { list?: boolean; restore?: string }) => {
+    try {
+      runBackup({
+        root: getProjectRoot(),
+        list: options.list === true,
+        restore: options.restore,
+      });
+    } catch (error) {
+      console.error(`  ✘ ${messageOf(error)}`);
+      process.exitCode = 1;
+    }
+  });
+
+program
+  .command("guard")
+  .description("le live est-il accessible ? (garde-fou : empreinte de configuration + critères)")
+  .action(() => {
+    try {
+      const allowed = runGuard({ root: getProjectRoot() });
+      if (!allowed) process.exitCode = 1;
+    } catch (error) {
+      console.error(`  ✘ ${messageOf(error)}`);
+      process.exitCode = 1;
+    }
+  });
+
+program
+  .command("parity")
+  .description("compare le paper et le backtest sur la même période")
+  .option("--days <n>", "période comparée en jours", (value) => Number.parseInt(value, 10), 30)
+  .option("--mode <mode>", "mode paper comparé", "paper")
+  .action((options: { days: number; mode: string }) => {
+    try {
+      runParity({ days: options.days, mode: options.mode, root: getProjectRoot() });
+    } catch (error) {
+      console.error(`  ✘ ${messageOf(error)}`);
+      process.exitCode = 1;
+    }
+  });
+
+program
+  .command("lab")
+  .description("laboratoire : paper uniquement, base séparée, mise plafonnée, stop obligatoire")
+  .option("--strategy <nom>", "stratégie à jouer (répétable)", collect, [])
+  .option("--duration <s>", "durée de la session (secondes)", (value) => Number.parseInt(value, 10))
+  .action(async (options: { strategy: string[]; duration?: number }) => {
+    try {
+      await runLabCommand({
+        root: getProjectRoot(),
+        strategies: options.strategy,
+        durationS: options.duration,
+      });
+    } catch (error) {
+      console.error(`  ✘ ${messageOf(error)}`);
+      process.exitCode = 1;
+    }
+  });
 
 program
   .command("report")
