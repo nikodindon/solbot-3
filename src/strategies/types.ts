@@ -1,6 +1,7 @@
 import type { Timeframe } from "../config/schema.js";
 import type { ImportedCandle } from "../state/imported-candles.js";
 import type { PortfolioView } from "../portfolio/portfolio.js";
+import type { RegimeResult } from "../market/regime.js";
 
 /**
  * Le contrat `Strategy`.
@@ -29,6 +30,8 @@ export interface AssetSnapshot {
   liquidityUsd: number | null;
   /** Bougies clôturées, de la plus ancienne à la plus récente. */
   candles: ImportedCandle[];
+  /** Régime de marché de cet actif (trending / ranging / idle). */
+  regime?: RegimeResult;
 }
 
 /** L'instantané de marché complet. */

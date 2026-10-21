@@ -8,6 +8,8 @@ import { buildPortfolioView, timeframeMs } from "../portfolio/portfolio.js";
 import type { RiskFlags, RiskManager } from "../risk/risk-manager.js";
 import type { MarketSnapshot, Signal, Strategy } from "../strategies/types.js";
 import type { CandleSource } from "../market/candles.js";
+import { classifyRegime, type RegimeConfig, type RegimeResult } from "../market/regime.js";
+import type { ImportedCandle } from "../state/imported-candles.js";
 import type { DB } from "../state/db.js";
 import { insertDecisions, type Decision, type DecisionKind } from "../state/decisions.js";
 import { insertEquityPoint } from "../state/equity.js";
@@ -52,6 +54,8 @@ export interface EngineDeps {
   market: MarketSource;
   /** Source des bougies (seam) : base en live, mémoire en backtest. */
   candles: CandleSource;
+  /** Détection de régime (seam) — injectable pour les tests. */
+  regime?: (candles: ImportedCandle[], cfg: RegimeConfig) => RegimeResult;
   executor: Executor;
   risk: RiskManager;
   cash: CashLedger;
@@ -258,6 +262,14 @@ export class Engine {
       } else {
         const candidates: { signal: Signal; strategy: string }[] = [];
 
+        for (const asset of snapshot.assets) {
+          if (!asset.regime) continue;
+          record("regime", `${asset.symbol} — ${asset.regime.regime} : ${asset.regime.reason}`, {
+            mint: asset.mint,
+            data: { regime: asset.regime.regime },
+          });
+        }
+
         for (const strategy of this.deps.strategies) {
           const evaluated = strategy.evaluate(snapshot, portfolio);
           for (const note of evaluated.notes) {
@@ -454,6 +466,14 @@ export class Engine {
       return Math.max(max, needed);
     }, 0);
 
+    const regimeCfg: RegimeConfig = {
+      timeframe: this.deps.cfg.data.regime.timeframe,
+      window: this.deps.cfg.data.regime.window,
+      trendThresholdPct: this.deps.cfg.data.regime.trend_threshold_pct,
+      rangeMaxPct: this.deps.cfg.data.regime.range_max_pct,
+    };
+    const classify = this.deps.regime ?? classifyRegime;
+
     const assets = [];
     for (const mint of mints) {
       const quote = quotes.get(mint);
@@ -465,6 +485,7 @@ export class Engine {
         priceUsd: quote.priceUsd,
         liquidityUsd: quote.liquidityUsd,
         candles,
+        regime: classify(candles, regimeCfg),
       });
     }
 
