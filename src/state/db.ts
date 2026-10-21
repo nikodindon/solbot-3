@@ -43,3 +43,8 @@ export function closeDb(db: DB): void {
     // une base déjà fermée ne doit jamais faire tomber l'arrêt du moteur
   }
 }
+
+/** Résout un chemin de base relatif à la racine du projet. */
+export function resolveDbPath(root: string, configured: string): string {
+  return path.isAbsolute(configured) ? configured : path.resolve(root, configured);
+}

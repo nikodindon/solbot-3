@@ -80,6 +80,16 @@ export const MIGRATIONS: Migration[] = [
       CREATE INDEX IF NOT EXISTS idx_watchlist_rank ON watchlist (active, rank);
     `,
   },
+  {
+    version: 2,
+    name: "token-volume-24h",
+    sql: `
+      -- Volume 24 h (achats + ventes) observé au dernier passage.
+      -- Sa différence entre deux ticks donne le volume *écoulé* du seau,
+      -- qui sert de proxy de volume par bougie.
+      ALTER TABLE tokens ADD COLUMN volume_24h_usd REAL;
+    `,
+  },
 ];
 
 /** Version du schéma actuellement appliquée (0 si base vierge). */

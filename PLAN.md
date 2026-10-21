@@ -11,7 +11,7 @@ Suivi de l'avancement, phase par phase. La spécification complète est dans
 | Phase | Version | Objectif | Risque sur les fonds | État |
 |---|---|---|---|---|
 | 0 | v0.1 | Fondations : config, logs, wallet, CLI, doctor | Nul | ✅ **terminée** |
-| 1 | v0.2 | Données : Price v3, Tokens v2, SQLite, scan, watch | Nul | ⬜ à faire |
+| 1 | v0.2 | Données : Price v3, Tokens v2, SQLite, scan, watch | Nul | ✅ **terminée** |
 | 2 | v0.3 | Backtest multi-fenêtres et import historique | Nul | ⬜ à faire |
 | 3 | v0.4 | Moteur paper, régimes, stratégies, RiskManager | Nul | ⬜ à faire |
 | 4 | v0.5 | Allocateur shadow, lab, rapports, Telegram, supervision | Nul | ⬜ à faire |
@@ -63,22 +63,50 @@ test.
 
 ## Phase 1 — Données de marché (v0.2)
 
-- [ ] Client Jupiter : fetch typé zod, `x-api-key`, timeouts, retry 429 et 5xx avec backoff, token bucket par plan
-- [ ] Price v3 par lots de 50 mints, cache court
-- [ ] Tokens v2 : recherche, tags, catégories, récents
-- [ ] Univers : filtres, tri déterministe, watchlist persistée
-- [ ] SQLite via `node:sqlite`, migrations versionnées
-- [ ] `watch` : ticks persistés, agrégation OHLCV 5m, 15m, 1h, upsert idempotent
-- [ ] Origine des prix tracée (`discovery` / `candle`)
-- [ ] CLI : `scan`, `price`, `watch`
+- [x] Client Jupiter : fetch typé zod, `x-api-key`, timeouts, retry 429 et 5xx avec backoff, token bucket par plan
+- [x] Price v3 par lots de 50 mints, cache court
+- [x] Tokens v2 : recherche, tags, catégories, récents
+- [x] Univers : filtres, tri déterministe, watchlist persistée
+- [x] SQLite via `node:sqlite`, migrations versionnées
+- [x] `watch` : ticks persistés, agrégation OHLCV 5m, 15m, 1h, upsert idempotent
+- [x] Origine des prix tracée (`discovery` / `candle`)
+- [x] CLI : `scan`, `price`, `watch`
 
 **DoD :** `scan` produit une watchlist stable d'un run à l'autre ; `watch`
 alimente des bougies cohérentes vérifiées en base ; le client ne dépasse jamais
 le débit de son plan, y compris sous erreurs 429.
 
-> Le client Jupiter (`src/jupiter/client.ts`, `price.ts`, `tokens.ts`) et le
-> schéma SQLite v1 (`src/state/migrations.ts`) sont **déjà en place** depuis la
-> phase 0 : il reste le poller, le scanner et l'agrégation OHLCV.
+> ✅ **Vérifié le 2026-10-21** — `scan` contre l'API réelle produit 42
+> actifs (SOL + USDC + 40) et une watchlist **identique** entre deux scans
+> consécutifs ; `watch` a tenu 5 ticks à 15 s d'intervalle sans aucune
+> violation de cohérence de bougie (0 sur 42 × 3 bougies) ; le token bucket
+> est vérifié par un test qui mesure le temps d'attente effectif.
+
+### Notes de conception (Phase 1)
+
+- **Volume par bougie** : Jupiter ne donne pas d'historique de volume. On
+  déduit le volume *écoulé* de la variation du volume 24 h entre deux polls
+  (migration v2 : `tokens.volume_24h_usd`). C'est une **approximation**, et
+  elle est documentée comme telle (README §9.5). Le premier tick d'un actif
+  n'a pas de référence : son volume vaut `null`, pas `0`.
+- **Origine des prix** : `price_ticks.src` vaut `discovery` pour tout ce qui
+  vient de Price v3 (donc adossé à une liquidité réelle). La valeur `candle`
+  est réservée aux prix issus d'une bougie OHLCV, et `import` à l'historique
+  GeckoTerminal (phase 2). La garde de données de la phase 3 s'appuiera dessus.
+- **Stabilité de la watchlist** : le tri est total — score organique, puis
+  liquidité, puis symbole, puis mint. Sans le tie-break final sur le mint,
+  deux scans sur le même univers pourraient différer sur un symbole ex æquo.
+- **La liquidité est supposée statique** : la valeur de `liquidity` vient du
+  dernier passage, elle n'est pas réévaluée à chaque tick.
+
+---
+
+## Prochaine étape — Phase 2
+
+Import GeckoTerminal, backtest rejouant le moteur réel, métriques,
+walk-forward, sensibilité aux coûts. Le point de vigilance : le backtest doit
+utiliser **exactement** le même modèle de coûts que le paper, sinon la parité
+backtest/paper sera cassée à la source (le défaut de solbot2).
 
 ---
 

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { closeDb, openDb } from "../../src/state/db.js";
-import { currentVersion, migrate, tablesOf } from "../../src/state/migrations.js";
+import { currentVersion, migrate, MIGRATIONS, tablesOf } from "../../src/state/migrations.js";
 
 describe("migrations", () => {
   it("crée le schéma et les tables core", () => {
@@ -8,8 +8,8 @@ describe("migrations", () => {
     try {
       expect(currentVersion(db)).toBe(0);
       const applied = migrate(db);
-      expect(applied).toBe(1);
-      expect(currentVersion(db)).toBe(1);
+      expect(applied).toBe(MIGRATIONS.length);
+      expect(currentVersion(db)).toBe(MIGRATIONS[MIGRATIONS.length - 1]?.version);
 
       const tables = tablesOf(db);
       expect(tables).toContain("bot_state");
@@ -28,7 +28,7 @@ describe("migrations", () => {
     try {
       migrate(db);
       expect(migrate(db)).toBe(0);
-      expect(currentVersion(db)).toBe(1);
+      expect(currentVersion(db)).toBe(MIGRATIONS[MIGRATIONS.length - 1]?.version);
     } finally {
       closeDb(db);
     }

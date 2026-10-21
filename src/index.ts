@@ -5,6 +5,9 @@ import "./utils/warnings.js";
 import { Command } from "commander";
 import { runDoctor, printDoctor } from "./cli/doctor.js";
 import { runInit } from "./cli/init.js";
+import { runPrice } from "./cli/price.js";
+import { runScan } from "./cli/scan.js";
+import { runWatch } from "./cli/watch.js";
 import { getVersionInfo } from "./cli/version.js";
 import { messageOf } from "./utils/errors.js";
 import { loadEnvFile } from "./utils/env-file.js";
@@ -48,6 +51,55 @@ program
       const result = await runDoctor({ root: getProjectRoot(), offline: options.offline === true });
       printDoctor(result);
       if (!result.ok) process.exitCode = 1;
+    } catch (error) {
+      console.error(`  ✘ ${messageOf(error)}`);
+      process.exitCode = 1;
+    }
+  });
+
+program
+  .command("scan")
+  .description("construit la watchlist et l'enregistre")
+  .option("--top <n>", "n'affiche que les n premiers actifs", (value) => Number.parseInt(value, 10))
+  .action(async (options: { top?: number }) => {
+    try {
+      await runScan({ top: options.top, root: getProjectRoot() });
+    } catch (error) {
+      console.error(`  ✘ ${messageOf(error)}`);
+      process.exitCode = 1;
+    }
+  });
+
+program
+  .command("price")
+  .description("prix en direct d'une paire (Price v3)")
+  .argument("<entrée>", "symbole ou mint de l'actif vendu")
+  .argument("<sortie>", "symbole ou mint de la devise reçue")
+  .action(async (input: string, output: string) => {
+    try {
+      await runPrice(input, output, { root: getProjectRoot() });
+    } catch (error) {
+      console.error(`  ✘ ${messageOf(error)}`);
+      process.exitCode = 1;
+    }
+  });
+
+program
+  .command("watch")
+  .description("collecte continue des prix et des bougies, sans trader")
+  .option("--interval <s>", "intervalle entre deux collectes (secondes)", (value) =>
+    Number.parseInt(value, 10),
+  )
+  .option("--duration <s>", "durée totale (secondes)", (value) => Number.parseInt(value, 10))
+  .option("--once", "un seul tick puis sortie", false)
+  .action(async (options: { interval?: number; duration?: number; once?: boolean }) => {
+    try {
+      await runWatch({
+        intervalS: options.interval,
+        durationS: options.duration,
+        once: options.once === true,
+        root: getProjectRoot(),
+      });
     } catch (error) {
       console.error(`  ✘ ${messageOf(error)}`);
       process.exitCode = 1;

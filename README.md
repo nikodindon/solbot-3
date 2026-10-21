@@ -857,29 +857,29 @@ Une phase ne commence que lorsque la précédente est verte sur sa **Definition 
 
 ### Phase 0 — Fondations (v0.1)
 
-- [ ] Projet TypeScript strict, ESLint, Prettier, vitest, tsx
-- [ ] `config` : chargement `.env` et `config.yaml`, validation zod, échec explicite
-- [ ] `logger` : pino JSON, redaction des secrets, niveaux configurables
-- [ ] `connection` : RPC avec retry, timeout et fournisseur de secours
-- [ ] CLI commander : `init`, `doctor`, `version`
-- [ ] `init` : keypair ed25519, `.env` chmod 600, refus d'écrasement, adresse et guide de financement
-- [ ] Interface `Signer` avec implémentation `EnvSigner`
-- [ ] `doctor` : RPC, clé Jupiter, soldes, version Node, base, STOP
-- [ ] `.gitignore` et hook de pré-commit qui bloque les clés privées
-- [ ] Tests : configuration invalide, parseur `.env`, signer, `init`
+- [x] Projet TypeScript strict, ESLint, Prettier, vitest, tsx
+- [x] `config` : chargement `.env` et `config.yaml`, validation zod, échec explicite
+- [x] `logger` : pino JSON, redaction des secrets, niveaux configurables
+- [x] `connection` : RPC avec retry, timeout et fournisseur de secours
+- [x] CLI commander : `init`, `doctor`, `version`
+- [x] `init` : keypair ed25519, `.env` chmod 600, refus d'écrasement, adresse et guide de financement
+- [x] Interface `Signer` avec implémentation `EnvSigner`
+- [x] `doctor` : RPC, clé Jupiter, soldes, version Node, base, STOP
+- [x] `.gitignore` et hook de pré-commit qui bloque les clés privées
+- [x] Tests : configuration invalide, parseur `.env`, signer, `init`
 
 **DoD :** `init` puis `doctor` fonctionnent contre le RPC et l'API réels ; aucun secret dans les logs ; toutes les configurations invalides sont couvertes par un test.
 
 ### Phase 1 — Données de marché (v0.2)
 
-- [ ] Client Jupiter : fetch typé zod, `x-api-key`, timeouts, retry 429 et 5xx avec backoff, token bucket par plan
-- [ ] Price v3 par lots de 50 mints, cache court
-- [ ] Tokens v2 : recherche, tags, catégories, récents
-- [ ] Univers : filtres, tri déterministe, watchlist persistée
-- [ ] SQLite via `node:sqlite`, migrations versionnées
-- [ ] `watch` : ticks persistés, agrégation OHLCV 5m, 15m, 1h, upsert idempotent
-- [ ] Origine des prix tracée (`discovery` / `candle`)
-- [ ] CLI : `scan`, `price`, `watch`
+- [x] Client Jupiter : fetch typé zod, `x-api-key`, timeouts, retry 429 et 5xx avec backoff, token bucket par plan
+- [x] Price v3 par lots de 50 mints, cache court
+- [x] Tokens v2 : recherche, tags, catégories, récents
+- [x] Univers : filtres, tri déterministe, watchlist persistée
+- [x] SQLite via `node:sqlite`, migrations versionnées
+- [x] `watch` : ticks persistés, agrégation OHLCV 5m, 15m, 1h, upsert idempotent
+- [x] Origine des prix tracée (`discovery` / `candle`)
+- [x] CLI : `scan`, `price`, `watch`
 
 **DoD :** `scan` produit une watchlist stable d'un run à l'autre ; `watch` alimente des bougies cohérentes vérifiées en base ; le client ne dépasse jamais le débit de son plan, y compris sous erreurs 429.
 

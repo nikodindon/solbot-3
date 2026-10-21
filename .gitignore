@@ -5,6 +5,10 @@
 *.key
 *.pem
 
+# ── Configuration locale (copiée depuis config/config.example.yaml) ──
+config/config.yaml
+config/strategies/*.local.yaml
+
 # ── Données locales ────────────────────────────────────────────
 data/
 logs/
