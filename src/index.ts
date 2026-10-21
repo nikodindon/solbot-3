@@ -9,6 +9,7 @@ import { runInit } from "./cli/init.js";
 import { runPrice } from "./cli/price.js";
 import { runReport } from "./cli/report.js";
 import { runScan } from "./cli/scan.js";
+import { runStart } from "./cli/start.js";
 import { runWatch } from "./cli/watch.js";
 import { getVersionInfo } from "./cli/version.js";
 import { messageOf } from "./utils/errors.js";
@@ -120,9 +121,13 @@ program
         (value) => Number.parseInt(value, 10),
         90,
       )
-      .action(async (options: { days: number }) => {
+      .option("--timeframe <tf>", "timeframe importé (5m|15m|1h)", "15m")
+      .action(async (options: { days: number; timeframe: string }) => {
         try {
-          await runBacktestImport(options.days, { root: getProjectRoot() });
+          await runBacktestImport(options.days, {
+            root: getProjectRoot(),
+            timeframe: options.timeframe as "5m" | "15m" | "1h",
+          });
         } catch (error) {
           console.error(`  ✘ ${messageOf(error)}`);
           process.exitCode = 1;
@@ -140,17 +145,21 @@ program
       )
       .option("--label <name>", "libellé du run", "backtest")
       .option("--timeframe <tf>", "timeframe rejoué (5m|15m|1h)", "15m")
-      .action(async (options: { days: number; label: string; timeframe: string }) => {
-        try {
-          await runBacktestRun(options.days, options.label, {
-            root: getProjectRoot(),
-            timeframe: options.timeframe as "5m" | "15m" | "1h",
-          });
-        } catch (error) {
-          console.error(`  ✘ ${messageOf(error)}`);
-          process.exitCode = 1;
-        }
-      }),
+      .option("--config <path>", "fichier de configuration alternatif")
+      .action(
+        async (options: { days: number; label: string; timeframe: string; config?: string }) => {
+          try {
+            await runBacktestRun(options.days, options.label, {
+              root: getProjectRoot(),
+              timeframe: options.timeframe as "5m" | "15m" | "1h",
+              configPath: options.config,
+            });
+          } catch (error) {
+            console.error(`  ✘ ${messageOf(error)}`);
+            process.exitCode = 1;
+          }
+        },
+      ),
   )
   .addCommand(
     new Command("walk-forward")
@@ -162,9 +171,13 @@ program
         90,
       )
       .option("--windows <n>", "nombre de fenêtres", (value) => Number.parseInt(value, 10), 4)
-      .action(async (options: { days: number; windows: number }) => {
+      .option("--config <path>", "fichier de configuration alternatif")
+      .action(async (options: { days: number; windows: number; config?: string }) => {
         try {
-          await runBacktestWalkForward(options.windows, options.days, { root: getProjectRoot() });
+          await runBacktestWalkForward(options.windows, options.days, {
+            root: getProjectRoot(),
+            configPath: options.config,
+          });
         } catch (error) {
           console.error(`  ✘ ${messageOf(error)}`);
           process.exitCode = 1;
@@ -185,6 +198,42 @@ program
       process.exitCode = 1;
     }
   });
+
+program
+  .command("start")
+  .description("démarre le moteur (paper par défaut)")
+  .option("--paper", "mode paper : aucun ordre envoyé, portefeuille virtuel", false)
+  .option("--dry-run", "mode dry-run : vrais /order + simulation on-chain (phase 5)", false)
+  .option("--live", "mode live : fonds réels (exige confirm_live et un backtest conforme)", false)
+  .option("--interval <s>", "intervalle entre deux ticks (secondes)", (value) =>
+    Number.parseInt(value, 10),
+  )
+  .option("--duration <s>", "durée totale (secondes)", (value) => Number.parseInt(value, 10))
+  .option("--once", "un seul tick puis sortie", false)
+  .action(
+    async (options: {
+      paper?: boolean;
+      dryRun?: boolean;
+      live?: boolean;
+      interval?: number;
+      duration?: number;
+      once?: boolean;
+    }) => {
+      const mode = options.live ? "live" : options.dryRun ? "dry_run" : "paper";
+      try {
+        await runStart({
+          root: getProjectRoot(),
+          mode,
+          intervalS: options.interval,
+          durationS: options.duration,
+          once: options.once === true,
+        });
+      } catch (error) {
+        console.error(`  ✘ ${messageOf(error)}`);
+        process.exitCode = 1;
+      }
+    },
+  );
 
 program
   .command("version")

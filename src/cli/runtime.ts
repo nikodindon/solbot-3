@@ -30,6 +30,8 @@ export interface CreateRuntimeOptions {
   root?: string;
   /** Forçage du mode (CLI). */
   mode?: Mode;
+  /** Fichier de configuration explicite (variante de config). */
+  configPath?: string;
   /** Emplacement explicite de la base (défaut : `config.database.path`). */
   dbPath?: string;
   /** Ouvre la base sans appliquer les migrations. */
@@ -38,7 +40,7 @@ export interface CreateRuntimeOptions {
 
 export function createRuntime(options: CreateRuntimeOptions = {}): Runtime {
   const root = options.root ?? getProjectRoot();
-  const loaded = loadConfig({ root, mode: options.mode });
+  const loaded = loadConfig({ root, mode: options.mode, yamlPath: options.configPath });
 
   const dbPath = options.dbPath ?? resolveDbPath(root, loaded.config.database.path);
   const db = openDb({ path: dbPath });

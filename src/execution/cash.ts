@@ -32,8 +32,16 @@ export class KvCash implements CashLedger {
     kvSetNumber(this.db, STATE_KEYS.paperCashUsdc, this.cashUsd() + usd);
   }
 
-  /** Alimente le cash de départ (à la création du portefeuille). */
+  /**
+   * Alimente le cash de départ **s'il n'existe pas encore**.
+   *
+   * Le portefeuille paper est **persistant** : un redémarrage doit retrouver
+   * exactement l'état où il s'était arrêté (cash **et** positions). Réinitialiser
+   * le cash à chaque démarrage, en laissant les positions en place, produirait
+   * un NAV faux — c'est le bug que ce correctif adresse.
+   */
   seed(usdc: number = this.initialUsdc): void {
+    if (kvGetNumber(this.db, STATE_KEYS.paperCashUsdc) !== null) return;
     kvSetNumber(this.db, STATE_KEYS.paperCashUsdc, usdc);
   }
 }

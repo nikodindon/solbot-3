@@ -86,11 +86,63 @@ oublié : c'est ce qui distingue une recherche d'une chasse au gain.
      tête) ne sont pas ceux qui portent l'edge ; le bruit des small caps
      domine.
 
+### 2026-10-21 — correction A : edge = mouvement mesuré de la cassure (label : `trend-edgeA-90j`)
+
+- **Hypothèse** (A) : `expectedMoveBps` doit être **ce que la cassure peut
+  réellement rapporter**, c'est-à-dire la hauteur de la zone de consolidation
+  projetée depuis la cassure (le « mouvement mesuré »), et non la distance à
+  l'EMA lente. Repli sur l'ATR si la zone est dégénérée.
+- **Modification** : `src/strategies/trend-breakout.ts` — `expectedMoveBps`
+  passe de `(prix − EMA lente) / EMA lente` à `(plus haut − plus bas) / plus
+  bas` de la zone de consolidation.
+- **Données** : identiques (41 actifs, 90 j, 15 m).
+
+| Variante | Seuil d'edge | PnL net | Win rate | PF | DD | Trades | Rejets `edge_net` |
+|---|---|---|---|---|---|---|---|
+| référence | ×3 | -71,46 $ | 28,10 % | 0,97 | 15,28 % | 637 | 292 |
+| **correction A** | ×3 | **-84,07 $** | 25,69 % | 0,99 | 15,51 % | 763 | 195 |
+| correction A + seuil ×8 | ×8 | **-148,26 $** | 28,97 % | 0,85 | 15,02 % | 580 | **2 378** |
+
+- **Conclusion** : **A est un échec**, et elle est instructive.
+  1. La correction A **dégrade** légèrement le résultat (-8,41 % contre
+     -7,15 %). Le mouvement mesuré n'est pas un meilleur prédicteur.
+  2. Le filtre d'edge à ×3 **ne mord toujours pas** (195 rejets sur ~950
+     signaux, soit 20 %). La hauteur d'une zone de consolidation 15 m sur ces
+     actifs dépasse presque toujours le seuil de 186 bps. **Le seuil ×3 est
+     structurellement inopérant à ce timeframe** : c'est une question de
+     calibrage, pas de qualité de signal.
+  3. Le passage à ×8 fait enfin **mordre** le filtre (2 378 rejets, et les
+     rejets `max_positions` chutent de 4 905 à 61 : le portefeuille n'est plus
+     saturé) — et le résultat **se dégrade encore** (-14,83 %, PF 0,85,
+     Sharpe -3,53).
+
+- **Ce qu'on a appris** :
+  1. **Sur cet univers, la volatilité est inversement corrélée au résultat.**
+     Le mouvement mesuré est un proxy de volatilité ; filtrer sur lui revient
+     à sélectionner les actifs les plus agités — qui sont ceux qui s'effondrent
+     le plus. C'est une **anti-edge mesurée**, pas une absence d'edge : c'est
+     un résultat fort, et il invalide l'hypothèse A.
+  2. Un filtre qui **rejette plus** ne garantit pas un meilleur résultat :
+     ici il a rejeté 4 fois plus de signaux et le résultat est dégradé. Un
+     filtre d'edge n'a de valeur que s'il est **corrélé** au résultat, pas
+     s'il est strict.
+  3. Le seuil `min_edge_over_costs` n'est pas un paramètre « à régler » :
+     il faut d'abord savoir **ce qu'il doit mesurer**. Ici il mesure un
+     aller-retour (frais + slippage + impact), et l'edge annoncé devrait être
+     un gain *net de ce même aller-retour*. Tant que les deux ne sont pas
+     exprimés dans la même unité, le filtre ne peut pas être calibré.
+
+- **Décision** : **abandonner A** et revenir au `expectedMoveBps` initial
+  (distance à l'EMA lente), qui reste une approximation honnête de l'objectif
+  de la stratégie. Retenir la leçon : le filtre d'edge doit être **validé par
+  le walk-forward**, jamais réglé à l'intuition.
+
+- **Suite** : tester B (fenêtre 1 h) et C (`mean_reversion` seul), puis
+  l'allocateur — c'est lui qui permettra de comparer honnêtement deux
+  hypothèses opposées, ce qu'un seuil ne peut pas faire.
+
 ### Hypothèses à tester ensuite
 
-- **A** — Recalibrer l'edge : `expectedMoveBps` devrait être l'écart **réel**
-  au plus haut récent (ce que la cassure peut rapporter), pas la distance à
-  l'EMA lente. Cela rendrait le filtre d'edge mordant.
 - **B** — Tester la fenêtre 1 h au lieu de 15 m : moins de trades, moins de
   bruit, mais des stops plus larges.
 - **C** — Tester `mean_reversion` seul, puis la combinaison : les deux

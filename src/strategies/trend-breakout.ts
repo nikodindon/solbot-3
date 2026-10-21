@@ -6,6 +6,7 @@ import {
   ema,
   emaSeries,
   highestHigh,
+  lowestLow,
   median,
   rsi,
   volBpsPerBar,
@@ -110,6 +111,7 @@ export class TrendBreakoutStrategy implements Strategy {
 
       // ── Entrée ─────────────────────────────────────────────────────────
       const priorHigh = highestHigh(highs, p.breakoutLookback);
+      const priorLow = lowestLow(lows, p.breakoutLookback);
       if (priorHigh === null) {
         notes.push(`${asset.symbol} : pas assez de bougies pour le plus haut`);
         continue;
@@ -140,8 +142,20 @@ export class TrendBreakoutStrategy implements Strategy {
         continue;
       }
 
-      // L'edge attendu est la distance au haut de la zone de consolidation.
-      const expectedMoveBps = ((price - emaSlow) / emaSlow) * 10_000;
+      // ── Mouvement attendu ──────────────────────────────────────────────
+      // Le mouvement attendu est le **mouvement mesuré** de la cassure : la
+      // hauteur de la zone de consolidation projetée depuis la cassure.
+      //
+      // C'est ce que la cassure peut *réellement* rapporter. La distance à
+      // l'EMA lente (utilisée avant) ne veut rien dire comme edge : elle est
+      // presque toujours au-dessus du seuil de coût, et le filtre d'edge ne
+      // mordait donc jamais — le seuil était mal calibré, pas les signaux.
+      //
+      // Repli : l'ATR, quand la zone de consolidation est dégénérée.
+      const measuredMoveBps =
+        priorLow !== null && priorLow > 0 ? ((priorHigh - priorLow) / priorLow) * 10_000 : 0;
+      const atrBps = atrValue !== null && price > 0 ? (atrValue / price) * 10_000 : 0;
+      const expectedMoveBps = measuredMoveBps > 0 ? measuredMoveBps : atrBps;
       const stopLossPct =
         atrValue !== null && price > 0 ? clamp((p.atrStopMult * atrValue * 100) / price, 1, 50) : 6;
 

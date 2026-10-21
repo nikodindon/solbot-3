@@ -22,9 +22,10 @@ export interface BacktestOptions {
 /** `backtest import --days N` — récupère l'historique OHLCV. */
 export async function runBacktestImport(
   days: number,
-  options: BacktestOptions = {},
+  options: BacktestOptions & { timeframe?: "5m" | "15m" | "1h" } = {},
 ): Promise<void> {
   const runtime = createRuntime({ root: options.root });
+  const timeframe = options.timeframe ?? "15m";
   try {
     const mints = listWatchlistMints(runtime.db).filter((m) => m !== USDC_MINT);
     if (mints.length === 0) {
@@ -34,13 +35,13 @@ export async function runBacktestImport(
 
     heading(`solbot3 backtest import — ${days} jours sur ${mints.length} actifs`);
     info("source", "GeckoTerminal — pool de plus grande réserve USD");
-    info("timeframe", "15m");
+    info("timeframe", timeframe);
     blank();
 
     const result = await importHistory({
       db: runtime.db,
       mints,
-      tf: "15m",
+      tf: timeframe,
       days,
       onProgress: (done, total, mint, candles) => {
         // En dehors d'un terminal, un retour chariot à la ligne rendrait le
@@ -87,12 +88,13 @@ export async function runBacktestImport(
 export async function runBacktestRun(
   days: number,
   label: string,
-  options: BacktestOptions & { timeframe?: "5m" | "15m" | "1h" } = {},
+  options: BacktestOptions & { timeframe?: "5m" | "15m" | "1h"; configPath?: string } = {},
 ): Promise<void> {
-  const runtime = createRuntime({ root: options.root });
+  const runtime = createRuntime({ root: options.root, configPath: options.configPath });
   try {
     const timeframe = options.timeframe ?? "15m";
     heading(`solbot3 backtest run — ${label} (${days} j, ${timeframe})`);
+    if (options.configPath) info("configuration", options.configPath);
 
     const mints = listWatchlistMints(runtime.db);
     const coverage = getMergedCandles(runtime.db, mints[0] ?? "", timeframe, {
@@ -204,11 +206,12 @@ export async function runBacktestRun(
 export async function runBacktestWalkForward(
   windows: number,
   days: number,
-  options: BacktestOptions = {},
+  options: BacktestOptions & { configPath?: string } = {},
 ): Promise<void> {
-  const runtime = createRuntime({ root: options.root });
+  const runtime = createRuntime({ root: options.root, configPath: options.configPath });
   try {
     heading(`solbot3 backtest walk-forward — ${windows} fenêtres sur ${days} j`);
+    if (options.configPath) info("configuration", options.configPath);
 
     const result = await runWalkForward({
       sourceDb: runtime.db,

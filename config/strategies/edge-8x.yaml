@@ -1,0 +1,44 @@
+# Variante de configuration — seuil d'edge net ×8
+#
+# Le seuil par défaut (3 × coûts aller-retour) ne mordait pas : la hauteur
+# d'une zone de consolidation 15 m sur ces actifs dépasse toujours le seuil.
+# On teste un seuil plus exigeant.
+#
+# Usage :
+#   npm run solbot3 -- backtest run --days 90 --label edge8 --config config/strategies/edge-8x.yaml
+
+mode: paper
+confirm_live: false
+base_currency: USDC
+loop_interval_s: 30
+
+allocator:
+  score_window_days: 7
+  min_trades_to_score: 10
+  hysteresis_pct: 15
+  min_edge_over_costs: 8.0
+  pilot_allocation_pct: 100
+
+strategies:
+  trend_breakout:
+    enabled: true
+    timeframe: 15m
+    params: { ema_fast: 12, ema_slow: 26, breakout_lookback: 20, rsi_period: 14, rsi_max: 68, volume_mult: 1.5, atr_stop_mult: 2.0 }
+  mean_reversion:
+    enabled: false
+    timeframe: 15m
+    params: { window: 96, z_entry: 2.0, z_exit: 0.5 }
+  grid:
+    enabled: false
+    timeframe: 15m
+    params: { step_pct: 1.0, levels: 5 }
+  dca_rotation:
+    enabled: false
+    params: { target_alloc: { SOL: 0.4, USDC: 0.6 }, drift_trigger_pct: 5, topup_usdc: 25 }
+  relative_strength:
+    enabled: false
+    timeframe: 1h
+    params: { lookback_h: 24, top_n: 3, rebalance_h: 6 }
+  regime_switch:
+    enabled: false
+    params: {}
