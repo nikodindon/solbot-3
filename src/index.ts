@@ -10,6 +10,7 @@ import { runGuard } from "./cli/guard.js";
 import { runLabCommand } from "./cli/lab.js";
 import { runInit } from "./cli/init.js";
 import { runParity } from "./cli/parity.js";
+import { runPaths } from "./cli/paths.js";
 import { runPrice } from "./cli/price.js";
 import { runReport } from "./cli/report.js";
 import { runScan } from "./cli/scan.js";
@@ -343,6 +344,19 @@ program
       }
     },
   );
+
+program
+  .command("paths")
+  .description("compare les chemins d'exécution sur les swaps réels (A/B)")
+  .option("--days <n>", "période analysée en jours", (value) => Number.parseInt(value, 10), 7)
+  .action((options: { days: number }) => {
+    try {
+      runPaths({ days: options.days, root: getProjectRoot() });
+    } catch (error) {
+      console.error(`  ✘ ${messageOf(error)}`);
+      process.exitCode = 1;
+    }
+  });
 
 program
   .command("version")

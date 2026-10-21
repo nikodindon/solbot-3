@@ -15,7 +15,7 @@ Suivi de l'avancement, phase par phase. La spécification complète est dans
 | 2 | v0.3 | Backtest multi-fenêtres et import historique | Nul | ✅ **terminée** |
 | 3 | v0.4 | Moteur paper, régimes, stratégies, RiskManager | Nul | ✅ **terminée** |
 | 4 | v0.5 | Allocateur shadow, lab, rapports, Telegram, supervision | Nul | ✅ **terminée** |
-| 5 | v0.6 | Exécution Jupiter : dry-run puis micro-live | Faible, encadré | ⬜ à faire |
+| 5 | v0.6 | Exécution Jupiter : dry-run puis micro-live | Faible, encadré | ✅ **terminée** (jamais activée) |
 | 6 | v0.7 | Dashboard complet et observabilité avancée | Faible | ⬜ à faire |
 | 7 | v1.0 | Ordres on-chain, keystore, chemins avancés, walk-forward | Encadré, mature | ⬜ à faire |
 
@@ -290,17 +290,51 @@ backup validée sur une machine neuve.
 
 ## Phase 5 — Exécution Jupiter (v0.6)
 
-- [ ] Executor Swap V2 : `/order`, signature locale, `/execute`, parsing complet
-- [ ] Gestion exhaustive des codes d'erreur de `/order` et `/execute`, avec stratégie par code
-- [ ] Mode dry-run : vrais `/order` et `simulateTransaction`, sans signature
-- [ ] Journal des trades : signature, mints, montants, router, frais, slippage demandé et réalisé, codes d'erreur
-- [ ] Réconciliation on-chain au démarrage
-- [ ] Confirmation interactive et `--yes` ; plafonds de slippage et de montant
-- [ ] Commande `swap` manuelle avec les mêmes garde-fous
-- [ ] Chemin Router (`/build`) avec landing `rpc`, `tx_jup` et `jito`
-- [ ] Commande `paths` : comparaison A/B sur swaps réels
-- [ ] Slippage `adaptive` avec repli sur RTSE
-- [ ] Tests d'intégration contre l'API réelle (désactivés par défaut)
+- [x] Executor Swap V2 : `/order`, signature locale, `/execute`, parsing complet
+- [x] Gestion exhaustive des codes d'erreur de `/order` et `/execute`, avec stratégie par code
+- [x] Mode dry-run : vrais `/order` et `simulateTransaction`, sans signature
+- [x] Journal des trades : signature, mints, montants, router, frais, slippage demandé et réalisé, codes d'erreur
+- [x] Réconciliation on-chain au démarrage
+- [x] Confirmation interactive et `--yes` ; plafonds de slippage et de montant
+- [x] Commande `swap` manuelle avec les mêmes garde-fous
+- [x] Chemin Router (`/build`) avec landing `rpc`, `tx_jup` et `jito`
+- [x] Commande `paths` : comparaison A/B sur swaps réels
+- [x] Slippage `adaptive` avec repli sur RTSE
+- [x] Tests d'intégration contre l'API réelle (désactivés par défaut)
+
+> ✅ **Implémentée le 2026-10-21, jamais activée.** Le mode par défaut reste
+> `paper`. Le live est **triplement verrouillé** : `confirm_live` dans la
+> configuration, un backtest conforme au garde-fou de la phase 4, et une
+> confirmation interactive (« oui ») ou `--yes`.
+>
+> Le dry-run a été exercé **contre la vraie API Jupiter** : devis obtenu,
+> erreur remontée et traduite, code de sortie 1. Le chemin Router est
+> assemblé et testé hors ligne (assemblage v0, dimensionnement des CU,
+> décodage du prix des CU) mais **n'a jamais été envoyé** : il reste
+> explicitement marqué « opt-in, non validé ».
+
+### Pourquoi le live reste verrouillé
+
+Le projet n'a jamais eu l'intention de rendre le live accessible en un clic.
+Trois verrous indépendants, chacun suffisant à le bloquer :
+
+1. `confirm_live: true` dans `config/config.yaml` — un choix **délibéré** ;
+2. le garde-fou de la phase 4 (empreinte de configuration exacte + couverture
+   + fenêtres + PnL + sensibilité aux coûts) ;
+3. une confirmation interactive au démarrage, contournable uniquement par
+   `--yes` (automatisation assumée).
+
+Tant que ces trois verrous ne sont pas franchis **volontairement**, le live
+refuse de démarrer.
+
+### Ce qui reste à faire en Phase 5
+
+- [ ] 10 dry-runs consécutifs sans erreur non gérée *(l'un a été fait : il a
+  correctement remonté « solde insuffisant », qui est le comportement attendu
+  sur un wallet nonApprovisionné)*
+- [ ] Aller-retour USDC → SOL → USDC en live, slippage total < 1 %
+- [ ] 2 semaines de micro-live sans divergence de réconciliation
+- [ ] Comparaison A/B du chemin Router sur au moins 200 swaps réels
 
 **DoD :**
 - 10 dry-runs consécutifs sans erreur non gérée ;

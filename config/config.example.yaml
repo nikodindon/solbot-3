@@ -87,8 +87,14 @@ paper:
 
 # ── Exécution (live) ───────────────────────────────────────────
 execution:
-  path: meta_aggregator         # meta_aggregator | router
+  path: meta_aggregator         # meta_aggregator | router (router : opt-in, non validé)
   slippage: rtse                # rtse | adaptive | <bps>
+  slippage_adaptive:            # paramètres du mode « adaptive »
+    timeframe: 15m
+    period: 14
+    multiplier: 1
+    min_bps: 10
+    max_bps: 100
   retries: 3
   retry_backoff_ms: 750
   confirm_timeout_s: 60

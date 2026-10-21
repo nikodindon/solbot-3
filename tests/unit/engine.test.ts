@@ -100,6 +100,13 @@ const CONFIG: AppConfig = {
   execution: {
     path: "meta_aggregator",
     slippage: "rtse",
+    slippage_adaptive: {
+      timeframe: "15m",
+      period: 14,
+      multiplier: 1,
+      min_bps: 10,
+      max_bps: 100,
+    },
     retries: 3,
     retry_backoff_ms: 750,
     confirm_timeout_s: 60,

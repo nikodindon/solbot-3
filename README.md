@@ -938,17 +938,17 @@ Une phase ne commence que lorsque la précédente est verte sur sa **Definition 
 
 ### Phase 5 — Exécution Jupiter (v0.6)
 
-- [ ] Executor Swap V2 : `/order`, signature locale, `/execute`, parsing complet
-- [ ] Gestion exhaustive des codes d'erreur de `/order` et `/execute`, avec stratégie par code
-- [ ] Mode dry-run : vrais `/order` et `simulateTransaction`, sans signature
-- [ ] Journal des trades : signature, mints, montants, router, frais, slippage demandé et réalisé, codes d'erreur
-- [ ] Réconciliation on-chain au démarrage
-- [ ] Confirmation interactive et `--yes` ; plafonds de slippage et de montant
-- [ ] Commande `swap` manuelle avec les mêmes garde-fous
-- [ ] Chemin Router (`/build`) avec landing `rpc`, `tx_jup` et `jito`
-- [ ] Commande `paths` : comparaison A/B sur swaps réels
-- [ ] Slippage `adaptive` avec repli sur RTSE
-- [ ] Tests d'intégration contre l'API réelle (désactivés par défaut)
+- [x] Executor Swap V2 : `/order`, signature locale, `/execute`, parsing complet
+- [x] Gestion exhaustive des codes d'erreur de `/order` et `/execute`, avec stratégie par code
+- [x] Mode dry-run : vrais `/order` et `simulateTransaction`, sans signature
+- [x] Journal des trades : signature, mints, montants, router, frais, slippage demandé et réalisé, codes d'erreur
+- [x] Réconciliation on-chain au démarrage
+- [x] Confirmation interactive et `--yes` ; plafonds de slippage et de montant
+- [x] Commande `swap` manuelle avec les mêmes garde-fous
+- [x] Chemin Router (`/build`) avec landing `rpc`, `tx_jup` et `jito`
+- [x] Commande `paths` : comparaison A/B sur swaps réels
+- [x] Slippage `adaptive` avec repli sur RTSE
+- [x] Tests d'intégration contre l'API réelle (désactivés par défaut)
 
 **DoD :**
 - 10 dry-runs consécutifs sans erreur non gérée ;

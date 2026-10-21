@@ -246,9 +246,23 @@ export const routerSchema = z.strictObject({
   cu_price_cap_microlamports: positiveInt(0).default(0),
 });
 
+export const slippageAdaptiveSchema = z.strictObject({
+  timeframe: z.enum(TIMEFRAMES).default("15m"),
+  /** Nombre de bougies moyennées par l'ATR. */
+  period: positiveInt(2).default(14),
+  /** Multiplicateur de l'ATR. */
+  multiplier: z.number().min(0).default(1),
+  /** Plancher de la borne, en bps. */
+  min_bps: positiveInt(1).default(10),
+  /** Plafond de la borne, en bps — `risk.max_slippage_bps` reste le garde-fou. */
+  max_bps: positiveInt(1).default(100),
+});
+
 export const executionSchema = z.strictObject({
   path: z.enum(EXECUTION_PATHS).default("meta_aggregator"),
   slippage: slippageSchema.default("rtse"),
+  /** Paramètres du slippage adaptatif (utilisés si `slippage: adaptive`). */
+  slippage_adaptive: slippageAdaptiveSchema.prefault({}),
   retries: positiveInt(0, 10).default(3),
   retry_backoff_ms: positiveInt(0).default(750),
   confirm_timeout_s: positiveInt(1, 3_600).default(60),

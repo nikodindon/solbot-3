@@ -1,5 +1,6 @@
 import { Connection } from "@solana/web3.js";
 import { Engine, FileStopSwitch, type MarketQuote, type MarketSource } from "../engine/engine.js";
+import { BuildApi } from "../jupiter/build.js";
 import { SwapApi } from "../jupiter/swap.js";
 import { SOL_MINT, USDC_MINT } from "../constants.js";
 import { createRegistry } from "../monitoring/metrics.js";
@@ -10,6 +11,7 @@ import { TelegramPoller } from "../notify/poller.js";
 import { TelegramNotifier, noopNotifier } from "../notify/telegram.js";
 import { createBackup } from "../state/backup.js";
 import { evaluateGuard } from "../risk/guard.js";
+import { createLandingTarget } from "../solana/landing.js";
 import { fetchChainBalances, reconcileBalances } from "../solana/reconcile.js";
 import { EnvSigner } from "../wallet/signer.js";
 import { KvCash } from "../execution/cash.js";
@@ -17,6 +19,7 @@ import { DEFAULT_COST_CONFIG, type CostConfig } from "../execution/costs.js";
 import { PaperExecutor } from "../execution/executor.js";
 import type { CashLedger, Executor } from "../execution/executor.js";
 import { JupiterExecutor } from "../execution/jupiter-executor.js";
+import { RouterExecutor } from "../execution/router-executor.js";
 import { DbCandleSource } from "../market/candles.js";
 import { Poller, type PollResult } from "../market/poller.js";
 import { RiskManager } from "../risk/risk-manager.js";
@@ -152,32 +155,55 @@ export async function runStart(options: StartOptions = {}): Promise<void> {
     virtualCash.seed(runtime.config.paper.initial_usdc);
     cash = virtualCash;
 
-    executor = new JupiterExecutor({
-      db: runtime.db,
-      swapApi: new SwapApi(runtime.jupiter),
-      connection,
-      signer,
-      mode: mode === "live" ? "live" : "dry_run",
-      retries: runtime.config.execution.retries,
-      slippageBumpFactor: 2,
-      maxSlippageBps: runtime.config.risk.max_slippage_bps,
-      slippageMode: runtime.config.execution.slippage,
-      adaptive: {
-        timeframe: "15m",
-        period: 14,
-        multiplier: 1,
-        minBps: 10,
-        maxBps: runtime.config.risk.max_slippage_bps,
-      },
-      confirm:
-        mode === "live"
-          ? async (summary) => {
-              note(summary);
-              if (options.yes === true) return true;
-              return (await confirmLive("Confirmer cet ordre ? (oui/non) : ")) === "oui";
-            }
-          : undefined,
-    });
+    const confirmFn =
+      mode === "live"
+        ? async (summary: string) => {
+            note(summary);
+            if (options.yes === true) return true;
+            return (await confirmLive("Confirmer cet ordre ? (oui/non) : ")) === "oui";
+          }
+        : undefined;
+
+    // Le chemin par défaut est le **Meta-Aggregator** : le Router n'est
+    // retenu qu'après une comparaison A/B sur 200 swaps réels.
+    executor =
+      runtime.config.execution.path === "router"
+        ? new RouterExecutor({
+            db: runtime.db,
+            buildApi: new BuildApi(runtime.jupiter),
+            connection,
+            signer,
+            landing: createLandingTarget({
+              choice: runtime.config.execution.router.landing,
+              connection,
+              apiKey: runtime.env.JUPITER_API_KEY ?? "",
+            }),
+            mode: mode === "live" ? "live" : "dry_run",
+            cuLimitBuffer: runtime.config.execution.router.cu_limit_buffer,
+            cuPriceCapMicrolamports: runtime.config.execution.router.cu_price_cap_microlamports,
+            tipLamports: runtime.config.execution.router.tip_lamports,
+            retries: runtime.config.execution.retries,
+            confirm: confirmFn,
+          })
+        : new JupiterExecutor({
+            db: runtime.db,
+            swapApi: new SwapApi(runtime.jupiter),
+            connection,
+            signer,
+            mode: mode === "live" ? "live" : "dry_run",
+            retries: runtime.config.execution.retries,
+            slippageBumpFactor: 2,
+            maxSlippageBps: runtime.config.risk.max_slippage_bps,
+            slippageMode: runtime.config.execution.slippage,
+            adaptive: {
+              timeframe: "15m",
+              period: 14,
+              multiplier: 1,
+              minBps: 10,
+              maxBps: runtime.config.risk.max_slippage_bps,
+            },
+            confirm: confirmFn,
+          });
   } else {
     const virtualCash = new KvCash(runtime.db, runtime.config.paper.initial_usdc);
     virtualCash.seed(runtime.config.paper.initial_usdc);
