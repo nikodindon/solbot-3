@@ -885,17 +885,19 @@ Une phase ne commence que lorsque la précédente est verte sur sa **Definition 
 
 ### Phase 2 — Backtest (v0.3)
 
-- [ ] Import GeckoTerminal (pool de plus forte réserve), table dédiée, retry 429
-- [ ] Fusion import / live à la lecture, import prioritaire
-- [ ] Backtester sur le moteur réel : seams bougies, horloge, coûts
-- [ ] Modèle de coûts : slippage de fill, impact, priority fee
-- [ ] Métriques : PnL net, win rate, profit factor, Sharpe simplifié, drawdown, turnover, frais
-- [ ] Stockage des runs avec label et empreinte de configuration
-- [ ] `backtest walk-forward` (fenêtres glissantes, out-of-sample agrégé)
-- [ ] Test de sensibilité aux coûts (×1,5 et ×2)
-- [ ] CLI : `backtest import`, `backtest run`, `backtest walk-forward`, `report`
+- [x] Import GeckoTerminal (pool de plus forte réserve), table dédiée, retry 429
+- [x] Fusion import / live à la lecture, import prioritaire
+- [x] Backtester sur le moteur réel : seams bougies, horloge, coûts
+- [x] Modèle de coûts : slippage de fill, impact, priority fee
+- [x] Métriques : PnL net, win rate, profit factor, Sharpe simplifié, drawdown, turnover, frais
+- [x] Stockage des runs avec label et empreinte de configuration
+- [x] `backtest walk-forward` (fenêtres glissantes, out-of-sample agrégé)
+- [x] Test de sensibilité aux coûts (×1,5 et ×2)
+- [x] CLI : `backtest import`, `backtest run`, `backtest walk-forward`, `report`
 
 **DoD :** un backtest sur 60 jours couvrant au moins 3 fenêtres tourne de bout en bout ; un même scénario en backtest et en simulation produit les mêmes décisions ; les métriques non calculables valent `null`, jamais une valeur trompeuse.
+
+> 📌 **Réordonnancement assumé.** Le moteur (portefeuille FIFO, coûts, RiskManager, stratégies, boucle de tick) a été construit **avec** le backtest, et non après : le README exige que le backtest rejoue le *même* moteur que le live, ce qui est impossible si le moteur n'existe pas encore. Construire un harnais de backtest jetable aurait été un travail perdu. La phase 3 est donc considérée comme **partiellement absorbée** par la phase 2 : il reste les régimes, le broker paper en temps réel, le kill-switch fichier et l'arrêt propre.
 
 ### Phase 3 — Moteur paper et stratégies (v0.4)
 

@@ -3,9 +3,11 @@
 import "./utils/warnings.js";
 
 import { Command } from "commander";
+import { runBacktestImport, runBacktestRun, runBacktestWalkForward } from "./cli/backtest.js";
 import { runDoctor, printDoctor } from "./cli/doctor.js";
 import { runInit } from "./cli/init.js";
 import { runPrice } from "./cli/price.js";
+import { runReport } from "./cli/report.js";
 import { runScan } from "./cli/scan.js";
 import { runWatch } from "./cli/watch.js";
 import { getVersionInfo } from "./cli/version.js";
@@ -100,6 +102,84 @@ program
         once: options.once === true,
         root: getProjectRoot(),
       });
+    } catch (error) {
+      console.error(`  ✘ ${messageOf(error)}`);
+      process.exitCode = 1;
+    }
+  });
+
+program
+  .command("backtest")
+  .description("backtest : import d'historique, rejeu du moteur, walk-forward")
+  .addCommand(
+    new Command("import")
+      .description("importe l'historique OHLCV (GeckoTerminal)")
+      .option(
+        "--days <n>",
+        "profondeur historique en jours",
+        (value) => Number.parseInt(value, 10),
+        90,
+      )
+      .action(async (options: { days: number }) => {
+        try {
+          await runBacktestImport(options.days, { root: getProjectRoot() });
+        } catch (error) {
+          console.error(`  ✘ ${messageOf(error)}`);
+          process.exitCode = 1;
+        }
+      }),
+  )
+  .addCommand(
+    new Command("run")
+      .description("rejoue le moteur réel sur l'historique")
+      .option(
+        "--days <n>",
+        "profondeur historique en jours",
+        (value) => Number.parseInt(value, 10),
+        90,
+      )
+      .option("--label <name>", "libellé du run", "backtest")
+      .option("--timeframe <tf>", "timeframe rejoué (5m|15m|1h)", "15m")
+      .action(async (options: { days: number; label: string; timeframe: string }) => {
+        try {
+          await runBacktestRun(options.days, options.label, {
+            root: getProjectRoot(),
+            timeframe: options.timeframe as "5m" | "15m" | "1h",
+          });
+        } catch (error) {
+          console.error(`  ✘ ${messageOf(error)}`);
+          process.exitCode = 1;
+        }
+      }),
+  )
+  .addCommand(
+    new Command("walk-forward")
+      .description("validation par fenêtres glissantes (PnL hors échantillon agrégé)")
+      .option(
+        "--days <n>",
+        "profondeur historique en jours",
+        (value) => Number.parseInt(value, 10),
+        90,
+      )
+      .option("--windows <n>", "nombre de fenêtres", (value) => Number.parseInt(value, 10), 4)
+      .action(async (options: { days: number; windows: number }) => {
+        try {
+          await runBacktestWalkForward(options.windows, options.days, { root: getProjectRoot() });
+        } catch (error) {
+          console.error(`  ✘ ${messageOf(error)}`);
+          process.exitCode = 1;
+        }
+      }),
+  );
+
+program
+  .command("report")
+  .description("métriques : PnL net, win rate, profit factor, drawdown, frais")
+  .option("--days <n>", "période analysée en jours", (value) => Number.parseInt(value, 10), 30)
+  .option("--mode <mode>", "mode analysé (paper|backtest|dry_run|live)", "paper")
+  .action((options: { days: number; mode: string }) => {
+    try {
+      runReport({ days: options.days, mode: options.mode, root: getProjectRoot() });
     } catch (error) {
       console.error(`  ✘ ${messageOf(error)}`);
       process.exitCode = 1;

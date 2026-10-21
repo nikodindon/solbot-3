@@ -90,6 +90,175 @@ export const MIGRATIONS: Migration[] = [
       ALTER TABLE tokens ADD COLUMN volume_24h_usd REAL;
     `,
   },
+  {
+    version: 3,
+    name: "imported-candles",
+    sql: `
+      -- Historique importé depuis GeckoTerminal.
+      -- Table **distincte** de candles : l'import ne doit jamais contaminer
+      -- les bougies construites en direct. La fusion se fait à la lecture.
+      CREATE TABLE IF NOT EXISTS candles_imported (
+        mint        TEXT NOT NULL,
+        tf          TEXT NOT NULL,
+        ts          INTEGER NOT NULL,
+        open        REAL NOT NULL,
+        high        REAL NOT NULL,
+        low         REAL NOT NULL,
+        close       REAL NOT NULL,
+        volume_usd  REAL,
+        source      TEXT NOT NULL,
+        imported_ms INTEGER NOT NULL,
+        PRIMARY KEY (mint, tf, ts)
+      );
+      CREATE INDEX IF NOT EXISTS idx_candles_imported_mint_tf_ts
+        ON candles_imported (mint, tf, ts);
+    `,
+  },
+  {
+    version: 4,
+    name: "trading-ledger",
+    sql: `
+      -- Positions agrégées (le détail est dans position_lots).
+      CREATE TABLE IF NOT EXISTS positions (
+        mint             TEXT PRIMARY KEY,
+        symbol           TEXT NOT NULL,
+        qty              REAL NOT NULL,
+        invested_usd     REAL NOT NULL,
+        avg_entry_usd    REAL NOT NULL,
+        realized_pnl_usd REAL NOT NULL DEFAULT 0,
+        peak_price_usd   REAL,
+        stop_loss_usd    REAL,
+        take_profit_usd  REAL,
+        opened_ms        INTEGER NOT NULL,
+        updated_ms       INTEGER NOT NULL
+      );
+
+      -- Lots FIFO : la base de custo de chaque position.
+      CREATE TABLE IF NOT EXISTS position_lots (
+        seq       INTEGER PRIMARY KEY AUTOINCREMENT,
+        mint      TEXT NOT NULL,
+        ts_ms     INTEGER NOT NULL,
+        qty       REAL NOT NULL,
+        remaining REAL NOT NULL,
+        price_usd REAL NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_position_lots_mint ON position_lots (mint, seq);
+
+      -- Journal des exécutions.
+      CREATE TABLE IF NOT EXISTS trades (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        ts_ms           INTEGER NOT NULL,
+        mode            TEXT NOT NULL,
+        strategy        TEXT NOT NULL,
+        mint            TEXT NOT NULL,
+        symbol          TEXT NOT NULL,
+        side            TEXT NOT NULL,
+        price_usd       REAL NOT NULL,
+        qty             REAL NOT NULL,
+        notional_usd    REAL NOT NULL,
+        fee_usd         REAL NOT NULL DEFAULT 0,
+        realized_pnl_usd REAL,
+        reason          TEXT,
+        signature       TEXT,
+        status          TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_trades_ts ON trades (ts_ms DESC);
+      CREATE INDEX IF NOT EXISTS idx_trades_mint_ts ON trades (mint, ts_ms DESC);
+
+      -- Signaux émis par les stratégies.
+      CREATE TABLE IF NOT EXISTS signals (
+        id                INTEGER PRIMARY KEY AUTOINCREMENT,
+        ts_ms             INTEGER NOT NULL,
+        strategy          TEXT NOT NULL,
+        mint              TEXT NOT NULL,
+        symbol            TEXT NOT NULL,
+        side              TEXT NOT NULL,
+        confidence        REAL NOT NULL,
+        expected_move_bps REAL NOT NULL,
+        reason            TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_signals_ts ON signals (ts_ms DESC);
+
+      -- Journal de décisions : la trace explicable du moteur.
+      CREATE TABLE IF NOT EXISTS decisions (
+        id       INTEGER PRIMARY KEY AUTOINCREMENT,
+        ts_ms    INTEGER NOT NULL,
+        tick_id  INTEGER NOT NULL,
+        kind     TEXT NOT NULL,
+        strategy TEXT,
+        mint     TEXT,
+        line     TEXT NOT NULL,
+        data     TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_decisions_ts ON decisions (ts_ms DESC);
+      CREATE INDEX IF NOT EXISTS idx_decisions_kind ON decisions (kind, ts_ms DESC);
+
+      -- Un point d'équité par tick.
+      CREATE TABLE IF NOT EXISTS equity_curve (
+        mode            TEXT NOT NULL,
+        ts_ms           INTEGER NOT NULL,
+        tick_id         INTEGER NOT NULL,
+        nav_usd         REAL NOT NULL,
+        cash_usd        REAL NOT NULL,
+        positions_usd   REAL NOT NULL,
+        realized_pnl_usd REAL NOT NULL,
+        drawdown_pct    REAL NOT NULL,
+        PRIMARY KEY (mode, ts_ms)
+      );
+      CREATE INDEX IF NOT EXISTS idx_equity_mode_ts ON equity_curve (mode, ts_ms);
+
+      -- Runs de backtest, avec l'empreinte de la configuration testée.
+      CREATE TABLE IF NOT EXISTS backtest_runs (
+        id             INTEGER PRIMARY KEY AUTOINCREMENT,
+        created_ms     INTEGER NOT NULL,
+        label          TEXT NOT NULL,
+        config_hash    TEXT NOT NULL,
+        config_json    TEXT NOT NULL,
+        timeframe      TEXT NOT NULL,
+        from_ms        INTEGER NOT NULL,
+        to_ms          INTEGER NOT NULL,
+        days           REAL NOT NULL,
+        initial_usdc   REAL NOT NULL,
+        mints_count    INTEGER NOT NULL,
+        candles_count  INTEGER NOT NULL,
+        trades_count   INTEGER NOT NULL,
+        conclusive     INTEGER NOT NULL,
+        metrics_json   TEXT NOT NULL,
+        rejections_json TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_backtest_runs_hash ON backtest_runs (config_hash, conclusive);
+
+      CREATE TABLE IF NOT EXISTS backtest_equity (
+        run_id        INTEGER NOT NULL,
+        ts_ms         INTEGER NOT NULL,
+        nav_usd       REAL NOT NULL,
+        cash_usd      REAL NOT NULL,
+        positions_usd REAL NOT NULL,
+        PRIMARY KEY (run_id, ts_ms)
+      );
+    `,
+  },
+  {
+    version: 5,
+    name: "backtest-trades",
+    sql: `
+      -- Trades clôturés d'un run de backtest.
+      -- Le backtest s'exécute en base mémoire : sans cette table, le
+      -- rapport ne pourrait pas afficher le win rate ni le profit factor.
+      CREATE TABLE IF NOT EXISTS backtest_trades (
+        run_id      INTEGER NOT NULL,
+        ts_ms       INTEGER NOT NULL,
+        mint        TEXT NOT NULL,
+        side        TEXT NOT NULL,
+        pnl_usd     REAL,
+        notional_usd REAL NOT NULL,
+        fee_usd     REAL NOT NULL DEFAULT 0,
+        price_usd   REAL NOT NULL,
+        qty         REAL NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_backtest_trades_run ON backtest_trades (run_id, ts_ms);
+    `,
+  },
 ];
 
 /** Version du schéma actuellement appliquée (0 si base vierge). */

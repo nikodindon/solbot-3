@@ -12,8 +12,8 @@ Suivi de l'avancement, phase par phase. La spécification complète est dans
 |---|---|---|---|---|
 | 0 | v0.1 | Fondations : config, logs, wallet, CLI, doctor | Nul | ✅ **terminée** |
 | 1 | v0.2 | Données : Price v3, Tokens v2, SQLite, scan, watch | Nul | ✅ **terminée** |
-| 2 | v0.3 | Backtest multi-fenêtres et import historique | Nul | ⬜ à faire |
-| 3 | v0.4 | Moteur paper, régimes, stratégies, RiskManager | Nul | ⬜ à faire |
+| 2 | v0.3 | Backtest multi-fenêtres et import historique | Nul | ✅ **terminée** |
+| 3 | v0.4 | Moteur paper, régimes, stratégies, RiskManager | Nul | 🔶 **partiellement absorbée** |
 | 4 | v0.5 | Allocateur shadow, lab, rapports, Telegram, supervision | Nul | ⬜ à faire |
 | 5 | v0.6 | Exécution Jupiter : dry-run puis micro-live | Faible, encadré | ⬜ à faire |
 | 6 | v0.7 | Dashboard complet et observabilité avancée | Faible | ⬜ à faire |
@@ -101,31 +101,91 @@ le débit de son plan, y compris sous erreurs 429.
 
 ---
 
-## Prochaine étape — Phase 2
+## Prochaine étape — Phase 3 (résiduel)
 
-Import GeckoTerminal, backtest rejouant le moteur réel, métriques,
-walk-forward, sensibilité aux coûts. Le point de vigilance : le backtest doit
-utiliser **exactement** le même modèle de coûts que le paper, sinon la parité
-backtest/paper sera cassée à la source (le défaut de solbot2).
+Régimes, mode paper temps réel, kill-switch fichier, arrêt propre. Puis
+l'allocateur de la phase 4 (portefeuilles fantômes), qui est le seul moyen
+de comparer honnêtement `trend_breakout` et `mean_reversion` — deux
+hypothèses opposées, dont l'une des deux doit être profitable à un moment
+donné.
+
+En parallèle, la correction **A** du journal d'expériences : recalibrer
+`expectedMoveBps` sur l'écart réel au plus haut récent, pour que le filtre
+d'edge net morde enfin.
 
 ---
 
 ## Phase 2 — Backtest (v0.3)
 
-- [ ] Import GeckoTerminal (pool de plus forte réserve), table dédiée, retry 429
-- [ ] Fusion import / live à la lecture, import prioritaire
-- [ ] Backtester sur le moteur réel : seams bougies, horloge, coûts
-- [ ] Modèle de coûts : slippage de fill, impact, priority fee
-- [ ] Métriques : PnL net, win rate, profit factor, Sharpe simplifié, drawdown, turnover, frais
-- [ ] Stockage des runs avec label et empreinte de configuration
-- [ ] `backtest walk-forward` (fenêtres glissantes, out-of-sample agrégé)
-- [ ] Test de sensibilité aux coûts (×1,5 et ×2)
-- [ ] CLI : `backtest import`, `backtest run`, `backtest walk-forward`, `report`
+- [x] Import GeckoTerminal (pool de plus grande réserve), table dédiée, retry 429
+- [x] Fusion import / live à la lecture, import prioritaire
+- [x] Backtester sur le moteur réel : seams bougies, horloge, coûts
+- [x] Modèle de coûts : slippage de fill, impact, priority fee
+- [x] Métriques : PnL net, win rate, profit factor, Sharpe simplifié, drawdown, turnover, frais
+- [x] Stockage des runs avec label et empreinte de configuration
+- [x] `backtest walk-forward` (fenêtres glissantes, out-of-sample agrégé)
+- [x] Test de sensibilité aux coûts (×1,5 et ×2)
+- [x] CLI : `backtest import`, `backtest run`, `backtest walk-forward`, `report`
 
 **DoD :** un backtest sur 60 jours couvrant au moins 3 fenêtres tourne de bout en
 bout ; un même scénario en backtest et en simulation produit les mêmes
 décisions ; les métriques non calculables valent `null`, jamais une valeur
 trompeuse.
+
+> ✅ **Vérifié le 2026-10-21** — un backtest de 90 jours tourne de bout en
+> bout en **57 s** (8 640 ticks rejoués) et produit 768 trades, une courbe
+> d'équité complète et un run stocké avec son empreinte de configuration. Le
+> test de parité rejoue le **même** scénario en mode `paper` et en mode
+> `backtest` et compare décisions, trades et courbe d'équité : ils sont
+> identiques. 134 tests verts.
+
+### ⚠️ Réordonnancement assumé
+
+Le moteur (portefeuille FIFO, modèle de coûts, RiskManager, stratégies,
+boucle de tick) a été construit **avec** le backtest, et non après. Le README
+exige que le backtest rejoue le *même* moteur que le live : c'est impossible
+si le moteur n'existe pas encore, et un harnais de backtest jetable aurait
+été un travail perdu.
+
+Conséquence : la phase 3 est **partiellement absorbée** par la phase 2. Il
+reste à faire en phase 3 :
+
+- [ ] Détection de régime (trending, ranging, idle) avec tests sur séries synthétiques
+- [ ] Mode `paper` temps réel : boucle de tick, `--duration`, `--once`
+- [ ] Fichier `STOP` et pause de perte journalière en UTC
+- [ ] Arrêt propre SIGINT / SIGTERM
+- [ ] SL, TP et trailing évalués à chaque tick, priorité sur les entrées
+- [ ] 48 h de paper sans fuite de mémoire ni position orpheline
+
+### Notes de conception (Phase 2)
+
+- **Le moteur est un, et il est le même partout.** `MarketSource` (les
+  prix), `CandleSource` (les bougies), `Clock` (le temps) et `Executor`
+  (l'exécution) sont des *seams* : le backtest injecte l'historique et le
+  temps, le live injecte l'API et l'horloge. Le test de parité compare les
+  décisions des deux modes sur le même scénario.
+- **Fenêtre de bougies fixe.** Les stratégies ne voient que les N bougies
+  clôturées dont elles ont besoin (et pas davantage). C'est ce qui rend
+  l'EMA identique en live et en backtest : une EMA amorcée sur l'historique
+  complet n'aurait rien à voir avec celle d'un rejeu sur 90 jours.
+- **La liquidité est supposée statique en backtest** (limite documentée,
+  README §9.5) : on prend celle relevée au scan, ou le repli configuré
+  (`backtest.default_liquidity_usd`).
+- **Les bougies importées ont des trous** : un pool DEX sans trade sur un
+  intervalle n'a pas de bougie. Le rejeu porte donc le dernier prix connu.
+- **La parité paper/backtest a été vérifiée par le test, pas par l'hypothèse.**
+  Elle a d'ailleurs révélé deux bugs que la relecture n'avait pas vus : les
+  frais réseau calculés en lamports au lieu de SOL, et le coût de revient
+  d'une position recalculé au prorata au lieu des lots réellement consommés.
+
+### Résultat du premier backtest
+
+`trend_breakout` par défaut, 90 jours, univers top-40 → **-59,56 $
+(-5,96 %)**, win rate 29,17 %, profit factor 1,03, 1 fenêtre profitable sur
+4 en walk-forward. **La stratégie par défaut ne fonctionne pas** : le détail
+et les hypothèses de correction sont dans
+[`results/experiments.md`](results/experiments.md). C'est un résultat
+attendu et utile : le projet mesure avant d'agir.
 
 ---
 

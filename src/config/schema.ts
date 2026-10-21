@@ -255,6 +255,22 @@ export const executionSchema = z.strictObject({
   router: routerSchema.prefault({}),
 });
 
+// ── Backtest ────────────────────────────────────────────────────────────────
+
+export const backtestSchema = z.strictObject({
+  /**
+   * Liquidité de repli, en USD, pour les actifs dont la liquidité n'est pas
+   * connue.
+   *
+   * En backtest, la liquidité est **supposée statique** (README §9.5) : c'est
+   * une des limites documentées du rejeu. On utilise la liquidité relevée au
+   * scan quand elle existe, et ce repli sinon.
+   */
+  default_liquidity_usd: z.number().min(0).default(250_000),
+  /** Capital de départ du run (indépendant du paper). */
+  initial_usdc: z.number().min(0).default(1000),
+});
+
 // ── Protections on-chain (phase 7) ──────────────────────────────────────────
 
 export const triggerSchema = z.strictObject({
@@ -333,6 +349,7 @@ export const appConfigSchema = z
     risk: riskSchema.prefault({}),
     paper: paperSchema.prefault({}),
     execution: executionSchema.prefault({}),
+    backtest: backtestSchema.prefault({}),
     trigger: triggerSchema.prefault({}),
     guard: guardSchema.prefault({}),
     lab: labSchema.prefault({}),
@@ -361,6 +378,7 @@ export type AllocatorConfig = z.infer<typeof allocatorSchema>;
 export type RiskConfig = z.infer<typeof riskSchema>;
 export type PaperConfig = z.infer<typeof paperSchema>;
 export type ExecutionConfig = z.infer<typeof executionSchema>;
+export type BacktestConfig = z.infer<typeof backtestSchema>;
 export type GuardConfig = z.infer<typeof guardSchema>;
 export type LabConfig = z.infer<typeof labSchema>;
 export type DashboardConfig = z.infer<typeof dashboardSchema>;

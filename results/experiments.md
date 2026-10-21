@@ -33,8 +33,72 @@ oublié : c'est ce qui distingue une recherche d'une chasse au gain.
 
 ## Expériences
 
-_Aucune expérience pour l'instant. La première entrée sera le backtest de
-`trend_breakout` sur 90 jours, en phase 2._
+### 2026-10-21 — `trend_breakout` par défaut, 90 jours, univers top-41 (label : `trend-default-90j`)
+
+- **Hypothèse** : les cassures de plus hauts sur volume confirmé continuent de
+  jouer, sur des tokens liquides de Solana, une fois les frais et le slippage
+  déduits.
+- **Configuration** : `trend_breakout` seule, paramètres par défaut
+  (`ema_fast 12`, `ema_slow 26`, `breakout_lookback 20`, `rsi_max 68`,
+  `volume_mult 1.5`, `atr_stop_mult 2`), `min_edge_over_costs: 3`,
+  `max_position_pct: 5`, `stop_loss_pct: 8`, `take_profit_pct: 15`.
+  Empreinte : `21d17382d94f4369`.
+- **Données** : 90 jours, 15 m, **41 actifs** importés depuis GeckoTerminal
+  (pool de plus grande réserve USD), 256 007 bougies du 2026-07-23 au
+  2026-10-21. Rejeu : 8 640 ticks en **1 min 20 s**.
+
+| Fenêtre | PnL net | Win rate | Profit factor | Max DD | Trades | Frais |
+|---|---|---|---|---|---|---|
+| 90 j (fenêtre unique) | **-71,46 $ (-7,15 %)** | 28,10 % | 0,97 | 15,28 % | 637 | 32,12 $ |
+
+- **Sensibilité aux coûts** : ×1 → -71,46 $ · ×1,5 → -90,90 $ · ×2 → -153,03 $.
+  La dégradation relative n'a pas de sens ici : le PnL de référence est déjà
+  négatif. Le verdict de sensibilité est donc **sans objet** — ce n'est pas la
+  sensibilité qui tue la stratégie, c'est le Lack of Edge lui-même.
+- **Rejets par règle** : `max_positions` 4 747 · `edge_net` 292.
+  Le filtre d'edge ne rejette que 6 % des signaux : le problème n'est **pas**
+  le coût, c'est la qualité des signaux (profit factor 0,97 : la stratégie
+  perd avant même les frais).
+- **Walk-forward** (30 j, 4 fenêtres) : -13,52 $ · -18,48 $ · -65,69 $ ·
+  **+20,65 $** → **1/4 fenêtres profitables**, agrégat -77,04 $.
+- **Conclusion** : **abandon en l'état**. La stratégie n'est pas profitable
+  hors échantillon, et une seule fenêtre sur quatre est positive — c'est le
+  signe d'un bruit, pas d'un edge.
+
+- **Ce qu'on a appris** :
+  1. Un profit factor de **0,97** avec 28 % de gagnants et 637 trades sur 90
+     jours, c'est **une absence d'edge**, pas une absence de profit. Le
+     turnover (31,79) et les frais (32,12 $) ne font qu'aggraver la perte :
+     même sans frais, la stratégie serait à peu près à l'équilibre, jamais
+     positive.
+  2. Le filtre d'edge net ne bite presque pas (283 rejets sur ~800 signaux) :
+     avec `expectedMoveBps` calculé comme la distance à l'EMA lente, l'edge
+     annoncé est presque toujours au-dessus du seuil. **Le seuil lui-même est
+     mal calibré**, pas les signaux.
+  3. Le stop à 8 % / take-profit à 15 % donne un ratio 1:1,87, très proche
+     du seuil de rentabilité du win rate (34,9 %). Le système est donc à la
+     merci de quelques points de win rate — et il n'a que 28 %.
+  4. Le drawdown max (15,28 %) a touché le kill-switch (15 %) : le moteur
+     s'est arrêté seul, et c'est visible dans le journal. **Le kill-switch
+     fonctionne** — c'est le premier résultat positif de ce projet.
+  5. L'univers complet (41 actifs) est **moins** bon que le sous-ensemble
+     de 28 : -7,15 % contre -5,96 %. Les actifs les plus liquides (ceux de
+     tête) ne sont pas ceux qui portent l'edge ; le bruit des small caps
+     domine.
+
+### Hypothèses à tester ensuite
+
+- **A** — Recalibrer l'edge : `expectedMoveBps` devrait être l'écart **réel**
+  au plus haut récent (ce que la cassure peut rapporter), pas la distance à
+  l'EMA lente. Cela rendrait le filtre d'edge mordant.
+- **B** — Tester la fenêtre 1 h au lieu de 15 m : moins de trades, moins de
+  bruit, mais des stops plus larges.
+- **C** — Tester `mean_reversion` seul, puis la combinaison : les deux
+  stratégies ont des hypothèses opposées (tendance vs range), l'allocateur
+  de la phase 4 pourrait exploiter leur complémentarité.
+- **D** — Rejouer sur 3 fenêtres non chevauchantes de 30 jours, dont une
+  choisie à l'avance **en perte** (le README l'exige : « dont au moins une
+  en régime défavorable »).
 
 ---
 

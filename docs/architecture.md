@@ -81,6 +81,41 @@ src/
 └── utils/         config (zod), logger (pino + redaction), horloge
 ```
 
+## Les seams
+
+Le moteur ne connaît que des **interfaces** ; les implémentations réelles sont
+injectées. C'est ce qui rend le backtest capable de rejouer le moteur réel.
+
+| Seam | Interface | Live / paper | Backtest |
+|---|---|---|---|
+| Prix | `MarketSource` | Price v3 | relecture de l'historique |
+| Bougies | `CandleSource` | base (import + live fusionnés) | mémoire |
+| Temps | `Clock` | horloge système | horloge rejouée |
+| Exécution | `Executor` | Jupiter (phase 5) / broker paper | broker paper |
+| Cash | `CashLedger` | solde on-chain (phase 5) / ledger virtuel | ledger virtuel |
+
+Conséquence directe : **le backtest et le live prennent exactement les mêmes
+décisions**, à l'entrée de marché près. C'est vérifié par un test, pas
+supposé.
+
+## État et migrations
+
+SQLite via `node:sqlite` (intégré à Node 22, aucune dépendance native).
+Les migrations sont **append-only** : une migration écrite n'est jamais
+modifiée. Chaque migration s'applique dans une transaction.
+
+| v | Nom | Contenu |
+|---|---|---|
+| 1 | `core-market-data` | `bot_state`, `tokens`, `price_ticks` (avec `src`), `candles`, `watchlist` |
+| 2 | `token-volume-24h` | `tokens.volume_24h_usd` (volume écoulé) |
+| 3 | `imported-candles` | `candles_imported` (historique GeckoTerminal, table distincte) |
+| 4 | `trading-ledger` | `positions`, `position_lots`, `trades`, `signals`, `decisions`, `equity_curve`, `backtest_runs`, `backtest_equity` |
+| 5 | `backtest-trades` | `backtest_trades` (trades clôturés d'un run) |
+
+Les tables du journal de trading (`trades`, `positions`, `position_lots`,
+`signals`, `decisions`, `equity`) arriveront avec le moteur (phase 3), les runs
+de backtest avec la phase 2.
+
 ## Règles non négociables
 
 - Le **RiskManager a toujours le dernier mot** : un signal, même excellent,
