@@ -1,0 +1,38 @@
+[Unit]
+Description=solbot3 — bot de trading spot Solana (Jupiter)
+Documentation=https://developers.jup.ag/docs
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=solbot
+Group=solbot
+
+# L'instance vit dans /var/lib/solbot3 : le code reste dans /opt/solbot3.
+Environment=SOLBOT3_HOME=/var/lib/solbot3
+Environment=NODE_ENV=production
+WorkingDirectory=/opt/solbot3
+
+ExecStart=/usr/bin/node /opt/solbot3/dist/index.js start --paper
+
+# Arrêt propre : le moteur doit finir son tick et clôturer ses positions virtuelles.
+KillSignal=SIGTERM
+TimeoutStopSec=45
+Restart=on-failure
+RestartSec=10
+
+# Garde-fous du système : le service ne peut pas abusive de la machine.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/solbot3
+LimitNOFILE=8192
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=solbot3
+
+[Install]
+WantedBy=multi-user.target

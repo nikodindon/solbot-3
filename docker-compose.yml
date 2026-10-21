@@ -1,0 +1,36 @@
+services:
+  solbot3:
+    build: .
+    image: solbot3:latest
+    container_name: solbot3
+    restart: unless-stopped
+
+    # Le .env reste **hors** de l'image : un rebuild ne doit jamais
+    # régénérer la clé du wallet.
+    env_file:
+      - .env
+
+    environment:
+      SOLBOT3_HOME: /app
+      NODE_ENV: production
+
+    volumes:
+      # Base SQLite, backups, fichier STOP
+      - ./data:/app/data
+      # Configuration (modifiable sans rebuild)
+      - ./config:/app/config:ro
+
+    # Le bot n'a pas besoin d'accès privilégié ni du réseau hôte.
+    read_only: false
+    init: true
+    stop_grace_period: 30s
+
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # Exécution manuelle, sans service permanent :
+  #   docker compose run --rm solbot3 doctor
+  #   docker compose run --rm solbot3 init
