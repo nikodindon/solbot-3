@@ -30,13 +30,15 @@ data:
 
 # ── Stratégies (chacune peut tourner en shadow) ────────────────
 strategies:
+  # La fenêtre 1 h est le premier levier : 3,6 fois moins de turnover, et
+  # des frais divisés par 3. Voir results/experiments.md.
   trend_breakout:
-    enabled: true
-    timeframe: 15m
+    enabled: false
+    timeframe: 1h
     params: { ema_fast: 12, ema_slow: 26, breakout_lookback: 20, rsi_period: 14, rsi_max: 68, volume_mult: 1.5, atr_stop_mult: 2.0 }
   mean_reversion:
     enabled: true
-    timeframe: 15m
+    timeframe: 1h
     params: { window: 96, z_entry: 2.0, z_exit: 0.5 }
   grid:
     enabled: false
@@ -58,7 +60,7 @@ allocator:
   score_window_days: 7
   min_trades_to_score: 10
   hysteresis_pct: 15            # une stratégie doit dépasser la pilote de 15 % pour la remplacer
-  min_edge_over_costs: 3.0      # edge net estimé ≥ 3 × coûts totaux, sinon rejet
+  min_edge_over_costs: 8.0      # edge net estimé ≥ 8 × coûts totaux, sinon rejet
   pilot_allocation_pct: 100     # part du capital confiée à la stratégie pilote
 
 # ── Risque (le RiskManager a toujours le dernier mot) ──────────
@@ -68,9 +70,9 @@ risk:
   max_asset_exposure_pct: 15
   daily_loss_limit_pct: 3       # pause des entrées jusqu'à minuit UTC
   max_drawdown_pct: 15          # kill-switch automatique
-  stop_loss_pct: 8
-  take_profit_pct: 15
-  trailing_stop: { activation_pct: 6, retrace_pct: 3 }
+  stop_loss_pct: 12
+  take_profit_pct: 20
+  trailing_stop: { activation_pct: 8, retrace_pct: 4 }
   max_price_impact_pct: 1.0
   max_slippage_bps: 100
   min_time_between_trades_s: 300

@@ -28,10 +28,21 @@ export interface AssetSnapshot {
   symbol: string;
   priceUsd: number;
   liquidityUsd: number | null;
-  /** Bougies clôturées, de la plus ancienne à la plus récente. */
-  candles: ImportedCandle[];
+  /**
+   * Bougies clôturées **par timeframe**, de la plus ancienne à la plus
+   * récente.
+   *
+   * Chaque stratégie lit le timeframe qu'elle a demandé : une stratégie en
+   * 1 h et une stratégie en 15 m ne doivent pas voir la même fenêtre.
+   */
+  candles: Partial<Record<Timeframe, ImportedCandle[]>>;
   /** Régime de marché de cet actif (trending / ranging / idle). */
   regime?: RegimeResult;
+}
+
+/** Bougies d'un actif pour un timeframe donné. */
+export function candlesFor(asset: AssetSnapshot, tf: Timeframe): ImportedCandle[] {
+  return asset.candles[tf] ?? [];
 }
 
 /** L'instantané de marché complet. */
@@ -90,8 +101,9 @@ export interface Strategy {
 }
 
 /** Extrait les bougies d'un actif pour un timeframe donné. */
-export function candlesOf(assets: AssetSnapshot[], mint: string): ImportedCandle[] {
-  return assets.find((asset) => asset.mint === mint)?.candles ?? [];
+export function candlesOf(assets: AssetSnapshot[], mint: string, tf: Timeframe): ImportedCandle[] {
+  const asset = assets.find((a) => a.mint === mint);
+  return asset ? candlesFor(asset, tf) : [];
 }
 
 /** FERMés uniquement : une bougie en cours ne décide rien. */

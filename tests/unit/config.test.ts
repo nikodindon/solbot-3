@@ -15,7 +15,7 @@ describe("configuration", () => {
       expect(config.confirm_live).toBe(false);
       expect(config.loop_interval_s).toBe(30);
       expect(config.risk.max_position_pct).toBe(5);
-      expect(config.allocator.min_edge_over_costs).toBe(3);
+      expect(config.allocator.min_edge_over_costs).toBe(8);
       expect(config.execution.path).toBe("meta_aggregator");
       expect(config.guard.min_backtest_days).toBe(60);
       expect(config.data.require_price_source).toEqual(["discovery", "candle"]);

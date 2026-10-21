@@ -172,17 +172,21 @@ program
       )
       .option("--windows <n>", "nombre de fenêtres", (value) => Number.parseInt(value, 10), 4)
       .option("--config <path>", "fichier de configuration alternatif")
-      .action(async (options: { days: number; windows: number; config?: string }) => {
-        try {
-          await runBacktestWalkForward(options.windows, options.days, {
-            root: getProjectRoot(),
-            configPath: options.config,
-          });
-        } catch (error) {
-          console.error(`  ✘ ${messageOf(error)}`);
-          process.exitCode = 1;
-        }
-      }),
+      .option("--timeframe <tf>", "timeframe rejoué (5m|15m|1h)", "15m")
+      .action(
+        async (options: { days: number; windows: number; config?: string; timeframe: string }) => {
+          try {
+            await runBacktestWalkForward(options.windows, options.days, {
+              root: getProjectRoot(),
+              configPath: options.config,
+              timeframe: options.timeframe as "5m" | "15m" | "1h",
+            });
+          } catch (error) {
+            console.error(`  ✘ ${messageOf(error)}`);
+            process.exitCode = 1;
+          }
+        },
+      ),
   );
 
 program

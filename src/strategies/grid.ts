@@ -1,6 +1,7 @@
 import type { Timeframe } from "../config/schema.js";
 import type { PortfolioView } from "../portfolio/portfolio.js";
 import {
+  candlesFor,
   type DataRequirement,
   type MarketSnapshot,
   type Signal,
@@ -49,7 +50,7 @@ export class GridStrategy implements Strategy {
     const p = this.params;
 
     for (const asset of snapshot.assets) {
-      const candles = asset.candles;
+      const candles = candlesFor(asset, this.timeframe);
       if (candles.length < this.anchorWindow) {
         notes.push(`${asset.symbol} : historique insuffisant pour l'ancre`);
         continue;

@@ -206,19 +206,21 @@ export async function runBacktestRun(
 export async function runBacktestWalkForward(
   windows: number,
   days: number,
-  options: BacktestOptions & { configPath?: string } = {},
+  options: BacktestOptions & { configPath?: string; timeframe?: "5m" | "15m" | "1h" } = {},
 ): Promise<void> {
   const runtime = createRuntime({ root: options.root, configPath: options.configPath });
+  const timeframe = options.timeframe ?? "15m";
   try {
     heading(`solbot3 backtest walk-forward — ${windows} fenêtres sur ${days} j`);
     if (options.configPath) info("configuration", options.configPath);
+    info("timeframe", timeframe);
 
     const result = await runWalkForward({
       sourceDb: runtime.db,
       cfg: runtime.config,
       days,
       windows,
-      timeframe: "15m",
+      timeframe,
     });
 
     if (result.windows.length === 0) {

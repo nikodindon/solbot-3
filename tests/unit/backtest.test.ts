@@ -27,6 +27,13 @@ const CONFIG: AppConfig = appConfigSchema.parse({
 const MINT = "AaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAaAa";
 const STEP = 900_000; // 15 min
 
+/**
+ * Base temporelle **fixe** : les tests ne doivent pas dépendre de
+ * `Date.now()` (deux appels à quelques ms d'écart suffisaient à faire varier
+ * le nombre de bougies retenues).
+ */
+const BASE = Date.UTC(2026, 5, 1);
+
 function makeDb(): DB {
   const db = openDb({ path: ":memory:" });
   migrate(db);
@@ -34,8 +41,7 @@ function makeDb(): DB {
 }
 
 /** Historique synthétique : hausse puis repli. */
-function seedHistory(db: DB, count: number): void {
-  const start = Date.now() - count * STEP;
+function seedHistory(db: DB, count: number, start = BASE): void {
   const candles = [];
   for (let i = 0; i < count; i++) {
     const close =
@@ -68,6 +74,8 @@ describe("backtest", () => {
         timeframe: "15m",
         initialUsdc: 1000,
         mints: [MINT],
+        fromMs: BASE,
+        toMs: BASE + 200 * STEP,
       });
 
       expect(result.ok).toBe(true);
@@ -95,6 +103,8 @@ describe("backtest", () => {
         days: 1,
         timeframe: "15m",
         mints: [MINT],
+        fromMs: BASE,
+        toMs: BASE + 50 * STEP,
       });
       result.close();
 
@@ -115,6 +125,8 @@ describe("backtest", () => {
         days: 30,
         timeframe: "15m",
         mints: [MINT],
+        fromMs: BASE,
+        toMs: BASE + 30 * STEP,
       });
       expect(result.ok).toBe(false);
       expect(result.error).toMatch(/backtest import/);
@@ -128,7 +140,7 @@ describe("backtest", () => {
     const db = makeDb();
     try {
       seedHistory(db, 10);
-      const samples = buildSamples(db, [MINT], "15m", Date.now() - 10 * STEP, Date.now(), 250_000);
+      const samples = buildSamples(db, [MINT], "15m", BASE, BASE + 10 * STEP, 250_000);
       expect(samples.length).toBe(10);
       // La liquidité de repli est appliquée quand elle est inconnue.
       expect(samples[0]?.quotes.get(MINT)?.liquidityUsd).toBe(250_000);

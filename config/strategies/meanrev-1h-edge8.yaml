@@ -1,0 +1,64 @@
+# Variante de configuration — fenêtre 1 h, `mean_reversion` seule, seuil d'edge ×8
+#
+# Combinaison des deux gagnants : la fenêtre 1 h (hypothèse B, moins de
+# trades et moins de frais) et l'hypothèse de retour à la moyenne
+# (hypothèse C, meilleure que la tendance).
+#
+# Test : sur `trend_breakout`, un seuil plus strict avait *dégradé* le
+# résultat (anti-edge mesurée). Sur `mean_reversion`, l'edge annoncé est la
+# distance réelle à la moyenne — donc le gain attendu. Si cette hypothèse est
+# bonne, un seuil plus strict doit **réduire** les trades de faible qualité.
+#
+# Usage :
+#   npm run solbot3 -- backtest run --days 90 --timeframe 1h --label mr1h-e8 \
+#     --config config/strategies/meanrev-1h-edge8.yaml
+
+mode: paper
+confirm_live: false
+base_currency: USDC
+loop_interval_s: 30
+
+allocator:
+  score_window_days: 7
+  min_trades_to_score: 10
+  hysteresis_pct: 15
+  min_edge_over_costs: 8.0
+  pilot_allocation_pct: 100
+
+risk:
+  max_position_pct: 5
+  max_positions: 6
+  max_asset_exposure_pct: 15
+  daily_loss_limit_pct: 3
+  max_drawdown_pct: 15
+  stop_loss_pct: 12
+  take_profit_pct: 20
+  trailing_stop: { activation_pct: 8, retrace_pct: 4 }
+  max_price_impact_pct: 1.0
+  max_slippage_bps: 100
+  min_time_between_trades_s: 300
+  sol_gas_reserve: 0.05
+
+strategies:
+  trend_breakout:
+    enabled: false
+    timeframe: 1h
+    params: { ema_fast: 12, ema_slow: 26, breakout_lookback: 20, rsi_period: 14, rsi_max: 68, volume_mult: 1.5, atr_stop_mult: 2.0 }
+  mean_reversion:
+    enabled: true
+    timeframe: 1h
+    params: { window: 96, z_entry: 2.0, z_exit: 0.5 }
+  grid:
+    enabled: false
+    timeframe: 1h
+    params: { step_pct: 1.0, levels: 5 }
+  dca_rotation:
+    enabled: false
+    params: { target_alloc: { SOL: 0.4, USDC: 0.6 }, drift_trigger_pct: 5, topup_usdc: 25 }
+  relative_strength:
+    enabled: false
+    timeframe: 1h
+    params: { lookback_h: 24, top_n: 3, rebalance_h: 6 }
+  regime_switch:
+    enabled: false
+    params: {}

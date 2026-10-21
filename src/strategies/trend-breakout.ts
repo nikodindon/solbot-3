@@ -12,6 +12,7 @@ import {
   volBpsPerBar,
 } from "./indicators.js";
 import {
+  candlesFor,
   type DataRequirement,
   type MarketSnapshot,
   type Signal,
@@ -67,7 +68,7 @@ export class TrendBreakoutStrategy implements Strategy {
     const p = this.params;
 
     for (const asset of snapshot.assets) {
-      const candles = asset.candles;
+      const candles = candlesFor(asset, this.timeframe);
       if (candles.length < p.emaSlow + 1) {
         notes.push(`${asset.symbol} : historique insuffisant (${candles.length} bougies)`);
         continue;

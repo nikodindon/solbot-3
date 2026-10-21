@@ -7,13 +7,16 @@ import { MeanReversionStrategy } from "../../src/strategies/mean-reversion.js";
 import { TrendBreakoutStrategy } from "../../src/strategies/trend-breakout.js";
 import type { AssetSnapshot } from "../../src/strategies/types.js";
 
-/** Fabrique une série de bougies clôturées. */
+/**
+ * Fabrique une série de bougies clôturées, disposées sous les timeframes
+ * attendus par les stratégies testées (15 m et 1 h).
+ */
 function candles(
   closes: number[],
   options: { high?: number; low?: number; volume?: number } = {},
 ): AssetSnapshot["candles"] {
   const start = Date.UTC(2026, 0, 1);
-  return closes.map((close, index) => ({
+  const list = closes.map((close, index) => ({
     mint: "Aa",
     tf: "15m" as const,
     ts: start + index * 900_000,
@@ -22,8 +25,9 @@ function candles(
     low: options.low ?? close,
     close,
     volumeUsd: options.volume ?? 1_000,
-    source: "import",
+    source: "import" as const,
   }));
+  return { "15m": list, "1h": list };
 }
 
 function asset(partial: Partial<AssetSnapshot> & { mint: string }): AssetSnapshot {
@@ -31,7 +35,7 @@ function asset(partial: Partial<AssetSnapshot> & { mint: string }): AssetSnapsho
     symbol: partial.mint.slice(0, 4),
     priceUsd: 1,
     liquidityUsd: 1_000_000,
-    candles: [],
+    candles: {},
     ...partial,
   };
 }
@@ -41,6 +45,27 @@ const EMPTY_PORTFOLIO: PortfolioView = {
   cashUsd: 1000,
   positions: [],
   unrealizedPnlUsd: 0,
+};
+
+/** Portefeuille avec une position ouverte sur `Aa`. */
+const WITH_POSITION: PortfolioView = {
+  ...EMPTY_PORTFOLIO,
+  navUsd: 1180,
+  positions: [
+    {
+      mint: "Aa",
+      symbol: "AAA",
+      qty: 100,
+      avgEntryUsd: 1.5,
+      valueUsd: 180,
+      unrealizedPnlUsd: 30,
+      unrealizedPnlPct: 20,
+      stopLossUsd: null,
+      takeProfitUsd: null,
+      peakPriceUsd: null,
+      ageMs: 1000,
+    },
+  ],
 };
 
 describe("trend_breakout", () => {
@@ -130,28 +155,8 @@ describe("trend_breakout", () => {
     const strategy = new TrendBreakoutStrategy(LAX);
     const falls = Array.from({ length: 40 }, (_, i) => 2 - i * 0.01);
     const result = strategy.evaluate(
-      {
-        tsMs: 0,
-        assets: [asset({ mint: "Aa", priceUsd: 1.8, candles: candles(falls) })],
-      },
-      {
-        ...EMPTY_PORTFOLIO,
-        positions: [
-          {
-            mint: "Aa",
-            symbol: "AAA",
-            qty: 100,
-            avgEntryUsd: 1.5,
-            valueUsd: 180,
-            unrealizedPnlUsd: 30,
-            unrealizedPnlPct: 20,
-            stopLossUsd: null,
-            takeProfitUsd: null,
-            peakPriceUsd: null,
-            ageMs: 1000,
-          },
-        ],
-      },
+      { tsMs: 0, assets: [asset({ mint: "Aa", priceUsd: 1.8, candles: candles(falls) })] },
+      WITH_POSITION,
     );
     expect(result.signals.filter((s) => s.side === "sell")).toHaveLength(1);
   });
@@ -187,24 +192,7 @@ describe("mean_reversion", () => {
     const closes = Array.from({ length: 20 }, (_, i) => 10 + Math.sin(i) * 0.01);
     const result = strategy.evaluate(
       { tsMs: 0, assets: [asset({ mint: "Aa", priceUsd: 10, candles: candles(closes) })] },
-      {
-        ...EMPTY_PORTFOLIO,
-        positions: [
-          {
-            mint: "Aa",
-            symbol: "AAA",
-            qty: 100,
-            avgEntryUsd: 6,
-            valueUsd: 1000,
-            unrealizedPnlUsd: 400,
-            unrealizedPnlPct: 66,
-            stopLossUsd: null,
-            takeProfitUsd: null,
-            peakPriceUsd: null,
-            ageMs: 1000,
-          },
-        ],
-      },
+      WITH_POSITION,
     );
     expect(result.signals.filter((s) => s.side === "sell")).toHaveLength(1);
   });
@@ -239,24 +227,7 @@ describe("grid", () => {
     const closes = Array.from({ length: 20 }, () => 10);
     const result = strategy.evaluate(
       { tsMs: 0, assets: [asset({ mint: "Aa", priceUsd: 10.2, candles: candles(closes) })] },
-      {
-        ...EMPTY_PORTFOLIO,
-        positions: [
-          {
-            mint: "Aa",
-            symbol: "AAA",
-            qty: 100,
-            avgEntryUsd: 9.5,
-            valueUsd: 1020,
-            unrealizedPnlUsd: 70,
-            unrealizedPnlPct: 7,
-            stopLossUsd: null,
-            takeProfitUsd: null,
-            peakPriceUsd: null,
-            ageMs: 1000,
-          },
-        ],
-      },
+      WITH_POSITION,
     );
     expect(result.signals.filter((s) => s.side === "sell")).toHaveLength(1);
   });

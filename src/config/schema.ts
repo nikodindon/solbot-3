@@ -149,15 +149,15 @@ export type StrategyName = (typeof strategyNames)[number];
 export const strategiesSchema = z.strictObject({
   trend_breakout: z
     .strictObject({
-      enabled: z.boolean().default(true),
-      timeframe: z.enum(TIMEFRAMES).default("15m"),
+      enabled: z.boolean().default(false),
+      timeframe: z.enum(TIMEFRAMES).default("1h"),
       params: trendBreakoutParamsSchema.prefault({}),
     })
     .prefault({}),
   mean_reversion: z
     .strictObject({
       enabled: z.boolean().default(true),
-      timeframe: z.enum(TIMEFRAMES).default("15m"),
+      timeframe: z.enum(TIMEFRAMES).default("1h"),
       params: meanReversionParamsSchema.prefault({}),
     })
     .prefault({}),
@@ -195,15 +195,15 @@ export const allocatorSchema = z.strictObject({
   score_window_days: positiveInt(1).default(7),
   min_trades_to_score: positiveInt(1).default(10),
   hysteresis_pct: z.number().min(0).default(15),
-  min_edge_over_costs: z.number().min(0).default(3.0),
+  min_edge_over_costs: z.number().min(0).default(8.0),
   pilot_allocation_pct: pct(0, 100).default(100),
 });
 
 // ── Risque ──────────────────────────────────────────────────────────────────
 
 export const trailingStopSchema = z.strictObject({
-  activation_pct: z.number().min(0).default(6),
-  retrace_pct: z.number().min(0).default(3),
+  activation_pct: z.number().min(0).default(8),
+  retrace_pct: z.number().min(0).default(4),
 });
 
 export const riskSchema = z.strictObject({
@@ -212,8 +212,8 @@ export const riskSchema = z.strictObject({
   max_asset_exposure_pct: pct(0, 100).default(15),
   daily_loss_limit_pct: pct(0, 100).default(3),
   max_drawdown_pct: pct(0, 100).default(15),
-  stop_loss_pct: pct(0, 100).default(8),
-  take_profit_pct: z.number().min(0).default(15),
+  stop_loss_pct: pct(0, 100).default(12),
+  take_profit_pct: z.number().min(0).default(20),
   trailing_stop: trailingStopSchema.prefault({}),
   max_price_impact_pct: z.number().min(0).default(1.0),
   max_slippage_bps: positiveInt(1, 10_000).default(100),

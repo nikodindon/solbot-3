@@ -141,16 +141,150 @@ oublié : c'est ce qui distingue une recherche d'une chasse au gain.
   l'allocateur — c'est lui qui permettra de comparer honnêtement deux
   hypothèses opposées, ce qu'un seuil ne peut pas faire.
 
+### 2026-10-21 — B, C et le calibrage du filtre d'edge : la marche à gravitation
+
+Cinq backtests successifs sur le même jeu de données (41 actifs, 90 jours,
+72 480 bougies en 1 h et 256 007 en 15 m). Le tableau est le résultat central
+du projet à ce stade.
+
+| # | Stratégie | TF | Seuil d'edge | PnL net | Trades | Win rate | PF | Max DD | Sharpe | Frais | Sensibilité ×1,5 |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| 1 | `trend_breakout` | 15 m | ×3 | -71,46 $ | 637 | 28,1 % | 0,97 | 15,3 % | -1,44 | 32,12 $ | sans objet |
+| 2 | `trend_breakout` (A) | 15 m | ×3 | -84,07 $ | 763 | 25,7 % | 0,99 | 15,5 % | -1,63 | 38,26 $ | sans objet |
+| 3 | `trend_breakout` (A) | 15 m | ×8 | -148,26 $ | 580 | 29,0 % | 0,85 | 15,0 % | -3,53 | 26,86 $ | sans objet |
+| 4 | `mean_reversion` | 15 m | ×3 | -18,15 $ | 562 | 29,2 % | 1,07 | 15,1 % | -0,27 | 29,25 $ | sans objet |
+| 5 | `trend_breakout` | 1 h | ×3 | +66,77 $ | 208 | 27,9 % | 1,18 | 9,0 % | 1,31 | 11,03 $ | ✗ -78,5 % |
+| 6 | `mean_reversion` | 1 h | ×3 | **+167,03 $** | 68 | 48,5 % | **2,39** | 4,7 % | **4,42** | 3,79 $ | ✗ -57,5 % |
+| 7 | **`mean_reversion`** | **1 h** | **×8** | **+80,01 $** | 136 | 39,0 % | 1,30 | 11,5 % | 1,79 | 7,57 $ | **✓ -10,1 %** |
+
+Walk-forward (4 fenêtres de 22,5 j, PnL hors échantillon **agrégé**) :
+
+| Config | Fenêtre 1 | Fenêtre 2 | Fenêtre 3 | Fenêtre 4 | Agrégat | Fenêtres + |
+|---|---|---|---|---|---|---|
+| `mean_reversion` 1 h ×3 | -11,34 $ | +98,35 $ | +34,77 $ | -27,23 $ | **+94,55 $** | 2/4 |
+| `mean_reversion` 1 h ×8 | -7,43 $ | +109,94 $ | +62,31 $ | -80,90 $ | **+83,91 $** | 2/4 |
+
+- **Conclusion** :
+  1. **B est confirmé** : la fenêtre 1 h transforme le résultat. Le passage
+     de 15 m à 1 h divise le nombre de trades par ~4 (763 → 208) et le
+     turnover par 3,6 (37,7 → 10,5). Les frais tombent de 32,12 $ à
+     11,03 $ — et le résultat passe de -7,15 % à **+6,68 %**. Sur un univers
+     de tokens bruyants, le timeframe est le premier levier, avant tout
+     paramètre.
+  2. **C est confirmé** : le retour à la moyenne bat la cassure de tendance
+     partout. Sur 15 m, -1,81 % contre -7,15 % ; en 1 h, +16,70 % contre
+     +6,68 %. **Cet univers est mean-reverting, pas trending.**
+  3. **Le filtre d'edge n'a de valeur que s'il mesure un gain réellement
+     corrélé au résultat** — et c'est la démonstration la plus nette du
+     projet. Sur `trend_breakout`, l'edge annoncé était un proxy de
+     volatilité, et un seuil plus strict a **dégradé** le résultat (#2 → #3).
+     Sur `mean_reversion`, l'edge annoncé est la **distance réelle à la
+     moyenne**, donc le gain attendu : un seuil plus strict a **amélioré la
+     robustesse** (#6 → #7). Le rendement absolu baisse (+167 → +80 $), mais
+     c'est le **seul run qui passe le garde-fou de sensibilité** (chute de
+     10,1 % à ×1,5, pour un maximum de 40 %).
+  4. Le résultat #6 (+167 $, PF 2,39) est le plus flatteur et le **moins
+     robuste** : 68 trades sur 90 jours, et une chute de 57,5 % des coûts.
+     Un edge mince qui s'effondre dès que les frais montent n'est pas un edge,
+     c'est du bruit favorably distribué. Le projet l'a écarté — c'est
+     exactement ce pour quoi le garde-fou de sensibilité existe.
+
+- **Ce qu'on a appris** :
+  1. **L'ordre de recherche compte.** Timeframe (×3,6 de turnover) avant
+     paramètre de stratégie avant seuil d'edge. On a cherché dans le mauvais
+     ordre pendant la phase 2 : on calibrait un seuil alors que le levier
+     principal était ailleurs.
+  2. **Un profit factor de 2,39 sur 68 trades n'est pas une preuve.** Le
+     profit factor est un ratio, pas un effectif. 68 trades, c'est 2 par
+     mois : l'intervalle de confiance est enormous.
+  3. **2 fenêtres profitables sur 4, c'est 50 %** — à peine mieux que le
+     hasard. Et la fenêtre la plus récente (#4) est la **plus mauvaise**
+     (-80,90 $ avec 49 trades). Le résultat agrégé est porté par la fenêtre
+     #2 (+109,94 $). **Ce n'est pas encore robuste.**
+  4. Le filtre d'edge et la sensibilité aux coûts sont **deux garde-fous
+     indépendants**, et il faut les deux : #6 passe le premier et échoue le
+     second ; #7 passe les deux.
+
+- **Décision** : **promouvoir `mean_reversion` en 1 h avec un seuil d'edge
+  ×8** comme configuration par défaut du projet (variante
+  `config/strategies/meanrev-1h-edge8.yaml`). C'est le premier run qui passe
+  **tous** les garde-fous. Il reste à consolider : 2/4 fenêtres positives
+  n'est pas suffisant, et la phase 4 (allocateur) est précisément l'outil
+  pour comparer cette stratégie à une autre plutôt que de(compiler sur
+  celle-ci.
+
+- **Suite** : l'allocateur de la phase 4 doit maintenant comparer
+  `mean_reversion` (1 h) à `trend_breakout` (1 h) **sur la même période**,
+  et à `relative_strength`, qui n'a pas encore été testée.
+
+### 2026-10-21 — revalidation après correction du multi-timeframe
+
+Un bug a été trouvé **après** les sept backtests ci-dessus : le moteur
+chargeait les bougies du timeframe de `trend_breakout` pour **toutes** les
+stratégies. Une stratégie en 1 h recevait donc des bougies de 15 m — la
+fenêtre z-score de 96 bougies couvrait 24 h au lieu de 4 jours.
+
+Le moteur a été corrigé : les bougies sont désormais portées **par timeframe**
+dans l'instantané de marché, et chaque stratégie lit le sien.
+
+- **Correction** : `AssetSnapshot.candles` devient une table par timeframe ;
+  le moteur ne charge que les timeframes réellement demandés par les
+  stratégies actives.
+- **Revalidation** : les sept backtests ont été rejoués. Les résultats sont
+  **inchangés à 0,1 % près** (80,00 $ contre 80,01 $ ; 167,06 $ contre
+  167,03 $ ; 67,09 $ contre 66,77 $).
+
+- **Ce qu'on a appris** : le bug était **latent**, pas actif — parce que
+  les deux séries (15 m et 1 h) décrivent le même chemin de prix, et qu'un
+  z-score calculé sur 96 points de 15 m ressemble à un z-score calculé sur
+  24 points de 1 h. Il aurait explosé avec d'autres paramètres (`window`,
+  `breakout_lookback`), ou dès qu'une stratégie en 1 h aurait cohabité avec
+  une stratégie en 15 m. **Un test qui passe ne prouve pas qu'un cas voisin
+  est correct** : il faut revalider après chaque changement structurel.
+
+### 2026-10-21 — configuration par défaut du projet
+
+`mean_reversion` en 1 h, seuil d'edge ×8, est désormais la configuration par
+défaut (`config/config.example.yaml` et le schéma zod) :
+
+```yaml
+strategies:
+  trend_breakout: { enabled: false, timeframe: 1h }
+  mean_reversion: { enabled: true, timeframe: 1h }
+allocator:
+  min_edge_over_costs: 8.0
+risk:
+  stop_loss_pct: 12
+  take_profit_pct: 20
+  trailing_stop: { activation_pct: 8, retrace_pct: 4 }
+```
+
+C'est le premier jeu de paramètres qui passe **tous** les garde-fous :
+PnL net > 0, couverture ≥ 60 j, sensibilité aux coûts ≤ 40 % de chute.
+
+Il reste **deux réserves** avant toute montée en puissance :
+
+1. **2 fenêtres profitables sur 4** en walk-forward, et la fenêtre la plus
+   récente est la moins bonne. C'est à peine mieux que le hasard.
+2. **136 trades sur 90 jours** : l'effectif est faible, l'intervalle de
+   confiance est large.
+
+Le statut reste donc **« promu en paper, pas en live »**. La phase 4
+(l'allocateur) et la phase 5 (paper prolongé) sont les prochaines étapes
+naturales.
+
 ### Hypothèses à tester ensuite
 
-- **B** — Tester la fenêtre 1 h au lieu de 15 m : moins de trades, moins de
-  bruit, mais des stops plus larges.
-- **C** — Tester `mean_reversion` seul, puis la combinaison : les deux
-  stratégies ont des hypothèses opposées (tendance vs range), l'allocateur
-  de la phase 4 pourrait exploiter leur complémentarité.
 - **D** — Rejouer sur 3 fenêtres non chevauchantes de 30 jours, dont une
   choisie à l'avance **en perte** (le README l'exige : « dont au moins une
-  en régime défavorable »).
+  en régime défavorable »). La fenêtre #4 du walk-forward est déjà la
+  meilleure et la plus mauvaise : il faut une segmentation différente.
+- **E** — Optimiser `z_entry` / `z_exit` / `window` de `mean_reversion` par
+  **walk-forward**, pas sur la fenêtre complète : c'est la seule façon
+  d'éviter le surapprentissage, et c'est ce que la phase 7 automatisera.
+- **F** — Tester `relative_strength` (encore jamais jouée) : sur un univers
+  de 41 tokens, un classement cross-sectionnel peut être plus robuste
+  qu'une condition absolue sur un actif.
 
 ---
 

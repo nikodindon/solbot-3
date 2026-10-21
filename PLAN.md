@@ -13,7 +13,7 @@ Suivi de l'avancement, phase par phase. La spécification complète est dans
 | 0 | v0.1 | Fondations : config, logs, wallet, CLI, doctor | Nul | ✅ **terminée** |
 | 1 | v0.2 | Données : Price v3, Tokens v2, SQLite, scan, watch | Nul | ✅ **terminée** |
 | 2 | v0.3 | Backtest multi-fenêtres et import historique | Nul | ✅ **terminée** |
-| 3 | v0.4 | Moteur paper, régimes, stratégies, RiskManager | Nul | 🔶 **partiellement absorbée** |
+| 3 | v0.4 | Moteur paper, régimes, stratégies, RiskManager | Nul | ✅ **terminée** |
 | 4 | v0.5 | Allocateur shadow, lab, rapports, Telegram, supervision | Nul | ⬜ à faire |
 | 5 | v0.6 | Exécution Jupiter : dry-run puis micro-live | Faible, encadré | ⬜ à faire |
 | 6 | v0.7 | Dashboard complet et observabilité avancée | Faible | ⬜ à faire |
@@ -147,15 +147,27 @@ exige que le backtest rejoue le *même* moteur que le live : c'est impossible
 si le moteur n'existe pas encore, et un harnais de backtest jetable aurait
 été un travail perdu.
 
-Conséquence : la phase 3 est **partiellement absorbée** par la phase 2. Il
-reste à faire en phase 3 :
+Conséquence : la phase 3 a été **absorbée** par la phase 2, et complétée
+depuis :
 
-- [ ] Détection de régime (trending, ranging, idle) avec tests sur séries synthétiques
-- [ ] Mode `paper` temps réel : boucle de tick, `--duration`, `--once`
-- [ ] Fichier `STOP` et pause de perte journalière en UTC
-- [ ] Arrêt propre SIGINT / SIGTERM
-- [ ] SL, TP et trailing évalués à chaque tick, priorité sur les entrées
-- [ ] 48 h de paper sans fuite de mémoire ni position orpheline
+- [x] Détection de régime (trending, ranging, idle) avec tests sur séries synthétiques
+- [x] Mode `paper` temps réel : boucle de tick, `--duration`, `--once`
+- [x] Fichier `STOP` et pause de perte journalière en UTC
+- [x] Arrêt propre SIGINT / SIGTERM
+- [x] SL, TP et trailing évalués à chaque tick, priorité sur les entrées
+- [ ] 48 h de paper sans fuite de mémoire ni position orpheline *(en cours)*
+
+### Phase 3 — suite : le moteur paper en temps réel
+
+`start --paper` fait tourner le moteur avec les **vrais prix** (Price v3) et
+les **vrais coûts modélisés**, sans aucun ordre envoyé. Portefeuille virtuel
+persistant (un redémarrage retrouve cash et positions), kill-switch fichier
+`data/STOP`, arrêt propre sur SIGINT/SIGTERM.
+
+Le paper tourne en continu sur l'instance de développement : il collecte les
+bougies en direct, alimente la base et fournit la série de données qui
+manquera toujours le plus à un backtest — le comportement réel entre deux
+clôtures de bougie.
 
 ### Notes de conception (Phase 2)
 

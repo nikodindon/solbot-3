@@ -2,6 +2,7 @@ import type { Timeframe } from "../config/schema.js";
 import type { PortfolioView } from "../portfolio/portfolio.js";
 import { zScore } from "./indicators.js";
 import {
+  candlesFor,
   type DataRequirement,
   type MarketSnapshot,
   type Signal,
@@ -51,7 +52,7 @@ export class MeanReversionStrategy implements Strategy {
     const p = this.params;
 
     for (const asset of snapshot.assets) {
-      const candles = asset.candles;
+      const candles = candlesFor(asset, this.timeframe);
       if (candles.length < p.window) {
         notes.push(`${asset.symbol} : historique insuffisant (${candles.length}/${p.window})`);
         continue;

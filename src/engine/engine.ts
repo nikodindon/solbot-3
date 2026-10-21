@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import { SOL_MINT, USDC_MINT } from "../constants.js";
-import type { AppConfig, Mode } from "../config/schema.js";
+import type { AppConfig, Mode, Timeframe } from "../config/schema.js";
 
 /** Modes d'exécution : les trois modes de config, plus le backtest. */
 export type RunMode = Mode | "backtest";
@@ -455,16 +455,22 @@ export class Engine {
     mints.add(SOL_MINT);
     mints.add(USDC_MINT);
 
-    // Un timeframe par actif pour l'instant : celui de la première stratégie
-    // qui en réclame un. Le multi-timeframe arrive avec l'allocateur.
-    const timeframe = this.deps.cfg.strategies.trend_breakout.timeframe;
-
     // Les stratégies n'ont besoin que d'une fenêtre : leur passer tout
     // l'historique rendrait le backtest quadratiquement lent.
-    const maxBars = this.deps.strategies.reduce((max, strategy) => {
-      const needed = strategy.requires.reduce((m, r) => Math.max(m, r.bars), 0);
-      return Math.max(max, needed);
-    }, 0);
+    //
+    // Chaque stratégie lit **son** timeframe : une stratégie en 1 h et une
+    // stratégie en 15 m ne doivent pas voir la même fenêtre. On ne charge
+    // donc que les timeframes réellement demandés.
+    const barsByTimeframe = new Map<Timeframe, number>();
+    for (const strategy of this.deps.strategies) {
+      for (const requirement of strategy.requires) {
+        const current = barsByTimeframe.get(requirement.timeframe) ?? 0;
+        barsByTimeframe.set(requirement.timeframe, Math.max(current, requirement.bars));
+      }
+    }
+    if (barsByTimeframe.size === 0) {
+      barsByTimeframe.set(this.deps.cfg.data.regime.timeframe, 48);
+    }
 
     const regimeCfg: RegimeConfig = {
       timeframe: this.deps.cfg.data.regime.timeframe,
@@ -478,14 +484,17 @@ export class Engine {
     for (const mint of mints) {
       const quote = quotes.get(mint);
       if (!quote) continue;
-      const candles = this.deps.candles.candles(mint, timeframe, tsMs, maxBars);
+      const candles: Partial<Record<Timeframe, ImportedCandle[]>> = {};
+      for (const [tf, bars] of barsByTimeframe) {
+        candles[tf] = this.deps.candles.candles(mint, tf, tsMs, bars);
+      }
       assets.push({
         mint,
         symbol: this.symbolOf(mint),
         priceUsd: quote.priceUsd,
         liquidityUsd: quote.liquidityUsd,
         candles,
-        regime: classify(candles, regimeCfg),
+        regime: classify(candles[regimeCfg.timeframe] ?? [], regimeCfg),
       });
     }
 

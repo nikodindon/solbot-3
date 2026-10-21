@@ -901,19 +901,19 @@ Une phase ne commence que lorsque la précédente est verte sur sa **Definition 
 
 ### Phase 3 — Moteur paper et stratégies (v0.4)
 
-- [ ] Interface `Strategy` et registre piloté par la configuration
-- [ ] Stratégie `trend_breakout`
-- [ ] Stratégie `mean_reversion` (z-score)
-- [ ] Stratégie `grid`
-- [ ] Stratégie `dca_rotation`
-- [ ] Détection de régime (trending, ranging, idle) avec tests sur séries synthétiques
-- [ ] Portefeuille : positions, lots FIFO, mark-to-market, PnL réalisé et latent, NAV
-- [ ] RiskManager complet (§12.1) et table des rejets avec règle et métriques
-- [ ] Boucle principale, verrou de trade, arrêt propre SIGINT et SIGTERM
-- [ ] SL, TP et trailing évalués à chaque tick, priorité sur les entrées
-- [ ] Fichier `STOP` et pause de perte journalière
-- [ ] Broker paper avec coûts modélisés et équité par tick
-- [ ] Mode `paper` avec `--duration` et `--once`
+- [x] Interface `Strategy` et registre piloté par la configuration
+- [x] Stratégie `trend_breakout`
+- [x] Stratégie `mean_reversion` (z-score)
+- [x] Stratégie `grid`
+- [x] Stratégie `dca_rotation`
+- [x] Détection de régime (trending, ranging, idle) avec tests sur séries synthétiques
+- [x] Portefeuille : positions, lots FIFO, mark-to-market, PnL réalisé et latent, NAV
+- [x] RiskManager complet (§12.1) et table des rejets avec règle et métriques
+- [x] Boucle principale, verrou de trade, arrêt propre SIGINT et SIGTERM
+- [x] SL, TP et trailing évalués à chaque tick, priorité sur les entrées
+- [x] Fichier `STOP` et pause de perte journalière
+- [x] Broker paper avec coûts modélisés et équité par tick
+- [x] Mode `paper` avec `--duration` et `--once`
 
 **DoD :** kill-switch testé (entrées coupées, sorties actives) ; chaque rejet est en base avec sa règle ; 48 h de paper sans fuite de mémoire, sans position orpheline et avec un journal cohérent ; arrêt propre vérifié.
 
