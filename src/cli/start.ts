@@ -267,18 +267,17 @@ export async function runStart(options: StartOptions = {}): Promise<void> {
     cfg: runtime.config,
     mode,
     strategies,
-    // L'allocateur est actif dès qu'il y a **plusieurs** stratégies : le
-    // capital réel n'est alors confié qu'à la stratégie pilote.
-    allocator:
-      strategies.length > 1
-        ? {
-            db: runtime.db,
-            allocator: runtime.config.allocator,
-            risk: runtime.config.risk,
-            costs,
-            initialCashUsd: runtime.config.paper.initial_usdc,
-          }
-        : undefined,
+    // Les **shadows tournent toujours**, même avec une seule stratégie :
+    // c'est ce qui donne la vue « Stratégies » du dashboard (performance
+    // isolée de chaque stratégie), et ce qui permet de comparer plus tard.
+    // Avec une seule stratégie, l'allocateur la désigne pilote d'emblée.
+    allocator: {
+      db: runtime.db,
+      allocator: runtime.config.allocator,
+      risk: runtime.config.risk,
+      costs,
+      initialCashUsd: runtime.config.paper.initial_usdc,
+    },
     market,
     candles: new DbCandleSource(runtime.db),
     executor,
@@ -360,9 +359,9 @@ export async function runStart(options: StartOptions = {}): Promise<void> {
   info("stratégies", strategies.map((s) => s.name).join(", ") || "aucune");
   info(
     "allocateur",
-    strategies.length > 1
-      ? `actif (hystérésis ${runtime.config.allocator.hysteresis_pct} %, seuil ${runtime.config.allocator.min_trades_to_score} trades)`
-      : "inactif (stratégie unique)",
+    `actif (hystérésis ${runtime.config.allocator.hysteresis_pct} %, seuil ${runtime.config.allocator.min_trades_to_score} trades)${
+      strategies.length === 1 ? " — stratégie unique, elle pilote d'emblée" : ""
+    }`,
   );
   info("watchlist", `${listWatchlistMints(runtime.db).length} actifs`);
   info("capital virtuel", `${runtime.config.paper.initial_usdc} $`);

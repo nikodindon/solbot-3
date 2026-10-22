@@ -12,11 +12,17 @@ COPY tsconfig.json tsconfig.build.json ./
 COPY src ./src
 RUN npm run build
 
+# Le front du dashboard est compilé dans l'image : le dashboard doit
+# fonctionner sans Node.js ni npm sur la machine hôte.
+COPY web ./web
+RUN npm --prefix web ci --no-audit --no-fund && npm --prefix web run build
+
 # ── Étape runtime ───────────────────────────────────────────────────────────
 FROM node:22-bookworm-slim AS runtime
 
 ENV NODE_ENV=production \
-    SOLBOT3_HOME=/app
+    SOLBOT3_HOME=/app \
+    DASHBOARD_HOST=0.0.0.0
 
 WORKDIR /app
 
@@ -24,6 +30,7 @@ COPY package.json package-lock.json* ./
 RUN npm ci --omit=dev --no-audit --no-fund && npm cache clean --force
 
 COPY --from=build /app/dist ./dist
+COPY --from=build /app/web/dist ./web/dist
 COPY config ./config
 COPY scripts ./scripts
 

@@ -16,7 +16,7 @@ Suivi de l'avancement, phase par phase. La spécification complète est dans
 | 3 | v0.4 | Moteur paper, régimes, stratégies, RiskManager | Nul | ✅ **terminée** |
 | 4 | v0.5 | Allocateur shadow, lab, rapports, Telegram, supervision | Nul | ✅ **terminée** |
 | 5 | v0.6 | Exécution Jupiter : dry-run puis micro-live | Faible, encadré | ✅ **terminée** (jamais activée) |
-| 6 | v0.7 | Dashboard complet et observabilité avancée | Faible | ⬜ à faire |
+| 6 | v0.7 | Dashboard complet et observabilité avancée | Faible | ✅ **terminée** |
 | 7 | v1.0 | Ordres on-chain, keystore, chemins avancés, walk-forward | Encadré, mature | ⬜ à faire |
 
 ---
@@ -348,13 +348,41 @@ refuse de démarrer.
 
 ## Phase 6 — Dashboard et observabilité (v0.7)
 
-- [ ] Serveur HTTP et API REST lecture seule (§13.2)
-- [ ] Flux SSE : ticks, trades, alertes
-- [ ] Front React / Vite : vues Vue d'ensemble, Stratégies, Positions, Trades, Décisions, Données
-- [ ] Graphiques d'équité par stratégie et buy & hold de référence (uPlot)
-- [ ] Jeton d'accès et avertissement d'exposition
-- [ ] Journal des décisions consultable par filtre (stratégie, motif, actif, date)
-- [ ] Rapport quotidien en HTML généré par le moteur
+- [x] Serveur HTTP et API REST lecture seule (§13.2)
+- [x] Flux SSE : ticks, trades, alertes
+- [x] Front React / Vite : vues Vue d'ensemble, Stratégies, Positions, Trades, Décisions, Données
+- [x] Graphiques d'équité par stratégie et buy & hold de référence (uPlot)
+- [x] Jeton d'accès et avertissement d'exposition
+- [x] Journal des décisions consultable par filtre (stratégie, motif, actif, date)
+- [x] Rapport quotidien en HTML généré par le moteur
+
+> ✅ **Vérifié le 2026-10-21** — le dashboard sert les sept endpoints de
+> l'API, le flux SSE s'ouvre, et **toutes** les méthodes d'écriture sont
+> refusées en 405 (vérifié par un test, pas par une intention). Le front
+> React compile (290 Ko, 97 Ko gzip) et rend correctement — vérifié par
+> 8 tests de rendu. L'image Docker sert le front **et** l'API.
+
+### Notes de conception (Phase 6)
+
+- **La lecture seule est une propriété testée.** Le test envoie POST, PUT,
+  PATCH et DELETE sur chaque route d'API et exige 405. C'est la garantie
+  centrale : un bug dans le front ne peut pas placer un ordre.
+- **Le SSE est une amélioration, pas un prérequis.** Le front rafraîchit
+  l'état toutes les 5 s **et** se branche sur le flux : si le flux tombe, le
+  dashboard continue de fonctionner, simplement moins fluidement.
+- **La référence buy & hold est normalisée** sur le NAV initial : on compare
+  deux courbes dans la même unité, pas deux prix différents.
+- **Le rapport HTML est autonome** : un seul fichier, ouvrable dans un
+  navigateur, sans ressource externe (vérifié par un test). Il s'échappe
+  aussi : un symbole containing du HTML ne peut pas s'injecter.
+- **Les shadows tournent toujours**, même avec une seule stratégie : c'est
+  ce qui donne la vue « Stratégies » du dashboard, et ce qui prépare la
+  comparaison entre stratégies de la phase 7.
+
+### Reste à faire en Phase 6
+
+- [ ] Vérifier le temps de chargement de la vue d'ensemble sur 30 jours
+  d'historique réel (le DoD demande moins de 2 s)
 
 **DoD :** le dashboard reflète l'état réel à ± 1 tick ; aucune route d'écriture
 (vérifié par test) ; chargement de la vue d'ensemble en moins de 2 s sur 30 jours

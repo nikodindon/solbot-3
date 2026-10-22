@@ -442,6 +442,10 @@ database:
 | `kill` / `resume` | Active ou retire le fichier `STOP` |
 | `backup [--list\|--restore <f>]` | Sauvegarde et restauration vérifiée |
 | `dashboard` | Démarre seulement le dashboard (lecture de la base) |
+| `guard` | Le live est-il accessible ? (garde-fou : empreinte + critères) |
+| `parity` | Compare le paper et le backtest sur la même période |
+| `lab` | Laboratoire : paper uniquement, base séparée, mise plafonnée |
+| `paths` | Compare les chemins d'exécution sur les swaps réels (A/B) |
 
 ### 7.2 Exemples
 
@@ -695,14 +699,19 @@ Le dashboard est **strictement lecture seule**. Il n'expose aucune route d'écri
 
 | Endpoint | Contenu |
 |---|---|
-| `GET /api/state` | Instantané de l'état courant |
+| `GET /api/state` | Instantané de l'état courant (NAV, cash, positions, garde-fous, compteurs, séries de graphiques) |
 | `GET /api/positions` | Positions ouvertes |
 | `GET /api/trades?limit=…` | Historique des trades |
 | `GET /api/strategies` | Shadows, scores, allocation |
-| `GET /api/decisions?since=…` | Signaux, arbitrages, rejets |
+| `GET /api/decisions?limit=…&kind=…&strategy=…` | Signaux, arbitrages, rejets (filtrables) |
+| `GET /api/equity?limit=…` | Courbe d'équité |
+| `GET /api/watchlist` | Fraîcheur des prix et couverture des bougies par actif |
 | `GET /api/stream` | Flux SSE : ticks, trades, alertes |
 | `GET /healthz` | État du moteur (voir §14) |
 | `GET /metrics` | Métriques Prometheus |
+
+Toute méthode d'écriture (`POST`, `PUT`, `PATCH`, `DELETE`) renvoie
+**405** : c'est vérifié par un test, pas par une intention.
 
 ### 13.3 Sécurité du dashboard
 
@@ -958,13 +967,13 @@ Une phase ne commence que lorsque la précédente est verte sur sa **Definition 
 
 ### Phase 6 — Dashboard et observabilité (v0.7)
 
-- [ ] Serveur HTTP et API REST lecture seule (§13.2)
-- [ ] Flux SSE : ticks, trades, alertes
-- [ ] Front React / Vite : vues Vue d'ensemble, Stratégies, Positions, Trades, Décisions, Données
-- [ ] Graphiques d'équité par stratégie et buy & hold de référence (uPlot)
-- [ ] Jeton d'accès et avertissement d'exposition
-- [ ] Journal des décisions consultable par filtre (stratégie, motif, actif, date)
-- [ ] Rapport quotidien en HTML généré par le moteur
+- [x] Serveur HTTP et API REST lecture seule (§13.2)
+- [x] Flux SSE : ticks, trades, alertes
+- [x] Front React / Vite : vues Vue d'ensemble, Stratégies, Positions, Trades, Décisions, Données
+- [x] Graphiques d'équité par stratégie et buy & hold de référence (uPlot)
+- [x] Jeton d'accès et avertissement d'exposition
+- [x] Journal des décisions consultable par filtre (stratégie, motif, actif, date)
+- [x] Rapport quotidien en HTML généré par le moteur
 
 **DoD :** le dashboard reflète l'état réel à ± 1 tick ; aucune route d'écriture (vérifié par test) ; chargement de la vue d'ensemble en moins de 2 s sur 30 jours d'historique.
 

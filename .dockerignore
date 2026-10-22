@@ -1,0 +1,15 @@
+node_modules/
+dist/
+coverage/
+data/
+logs/
+results/archive/
+oldprojects/
+web/node_modules/
+web/dist/
+*.tsbuildinfo
+.env
+.env.*
+!.env.example
+config/config.yaml
+.git/

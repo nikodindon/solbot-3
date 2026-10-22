@@ -5,6 +5,7 @@ import "./utils/warnings.js";
 import { Command } from "commander";
 import { runBacktestImport, runBacktestRun, runBacktestWalkForward } from "./cli/backtest.js";
 import { runBackup } from "./cli/backup.js";
+import { runDashboard } from "./cli/dashboard.js";
 import { runDoctor, printDoctor } from "./cli/doctor.js";
 import { runGuard } from "./cli/guard.js";
 import { runLabCommand } from "./cli/lab.js";
@@ -268,9 +269,17 @@ program
   .description("métriques : PnL net, win rate, profit factor, drawdown, frais")
   .option("--days <n>", "période analysée en jours", (value) => Number.parseInt(value, 10), 30)
   .option("--mode <mode>", "mode analysé (paper|backtest|dry_run|live)", "paper")
-  .action((options: { days: number; mode: string }) => {
+  .option("--html", "écrit un rapport HTML autonome dans data/reports/", false)
+  .option("--day <date>", "date du rapport HTML (YYYY-MM-DD)", (value) => value)
+  .action((options: { days: number; mode: string; html?: boolean; day?: string }) => {
     try {
-      runReport({ days: options.days, mode: options.mode, root: getProjectRoot() });
+      runReport({
+        days: options.days,
+        mode: options.mode,
+        root: getProjectRoot(),
+        html: options.html === true,
+        day: options.day,
+      });
     } catch (error) {
       console.error(`  ✘ ${messageOf(error)}`);
       process.exitCode = 1;
@@ -356,6 +365,22 @@ program
       console.error(`  ✘ ${messageOf(error)}`);
       process.exitCode = 1;
     }
+  });
+
+program
+  .command("dashboard")
+  .description("tableau de bord en lecture seule (API REST + SSE)")
+  .option("--host <h>", "interface d'écoute", (value) => value)
+  .option("--port <p>", "port d'écoute", (value) => Number.parseInt(value, 10))
+  .action((options: { host?: string; port?: number }) => {
+    void runDashboard({
+      root: getProjectRoot(),
+      host: options.host,
+      port: options.port,
+    }).catch((error: unknown) => {
+      console.error(`  ✘ ${messageOf(error)}`);
+      process.exitCode = 1;
+    });
   });
 
 program

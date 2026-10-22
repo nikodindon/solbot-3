@@ -1,14 +1,20 @@
 import { computeMetrics, type ClosedTrade } from "../backtest/metrics.js";
 import { getBacktestEquity, getBacktestTrades, listBacktestRuns } from "../backtest/store.js";
+import path from "node:path";
+import { writeDailyReport } from "../backtest/daily-report.js";
 import { listEquity } from "../state/equity.js";
 import { costBreakdown, listTrades } from "../state/trades.js";
-import { blank, heading, info, note, warn } from "./output.js";
+import { blank, heading, info, note, ok, warn } from "./output.js";
 import { closeRuntime, createRuntime } from "./runtime.js";
 
 export interface ReportOptions {
   days?: number;
   mode?: string;
   root?: string;
+  /** Écrit un rapport HTML autonome dans `data/reports/`. */
+  html?: boolean;
+  /** Date du rapport HTML (YYYY-MM-DD). */
+  day?: string;
 }
 
 /**
@@ -131,6 +137,18 @@ export function runReport(options: ReportOptions = {}): void {
     }
 
     blank();
+
+    // ── Rapport HTML autonome ─────────────────────────────────────────
+    if (options.html) {
+      const day = options.day ?? new Date().toISOString().slice(0, 10);
+      const result = writeDailyReport(runtime.db, {
+        day,
+        mode,
+        outDir: path.resolve(runtime.root, "data", "reports"),
+      });
+      ok("rapport HTML écrit", result.path);
+      blank();
+    }
   } finally {
     closeRuntime(runtime);
   }

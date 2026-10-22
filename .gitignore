@@ -19,6 +19,9 @@ node_modules/
 dist/
 coverage/
 *.tsbuildinfo
+web/dist/
+web/node_modules/
+web/tsconfig.tsbuildinfo
 
 # ── Archives des anciens projets (référence historique) ───────
 oldprojects/
