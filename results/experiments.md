@@ -395,6 +395,19 @@ sa position doit rester lisible.
   la comparaison entre stratégies** — c'est-à-dire l'instrument même dont
   dépend l'allocateur.
 
+#### Décision : on garde les positions orphelines (option a)
+
+Une position ouverte sur un signal devenu invalide (cas ZCAT) **reste
+ouverte** jusqu'à son stop ou son take-profit. Aucune règle de clôture
+supplémentaire.
+
+Justification : après le correctif d'échelle, le z-score de ZCAT est
+redevenu normal (−1,19) ; la position est « presque à la moyenne » et
+encore défendable. Une règle « plus de thèse → on sort » couperait des
+positions encore bonnes, alors que le stop (−36 %) et le TP (+20 %)
+suffisent à borner le risque. Le garde-fou reste donc **le risque**, pas
+une interprétation de la thèse.
+
 ### Hypothèses à tester ensuite
 
 - **D** — Rejouer sur 3 fenêtres non chevauchantes de 30 jours, dont une
