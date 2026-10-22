@@ -2,7 +2,17 @@
 
 > Bot de trading **spot** sur Solana, propulsé par **Jupiter**, conçu pour tester des stratégies de façon rigoureuse (backtest → paper → dry-run → live encadré), avec gestion du risque stricte, journal complet et dashboard en lecture seule.
 
-**Statut du projet : 🚧 en conception.** Ce README décrit la cible de la v1.0 et sert de feuille de route. Les commandes et options indiquées sont la spécification à implémenter ; l'avancement est suivi dans la section [Roadmap](#18-roadmap-détaillée).
+**Statut du projet : 🚧 v0.7.0 — moteur complet, aucune configuration validée pour le live.**
+Toutes les phases 0 à 6 sont livrées, et la phase 7 est partiellement livrée
+(walk-forward automatisé, Trigger API, keystore chiffré). Le bot tourne en
+**paper** ; le **live** reste triplement verrouillé.
+
+Le résultat le plus important du projet à ce jour : le walk-forward
+automatisé **rejette** les deux meilleures stratégies mesurées (+22,17 % et
++16,71 % sur la fenêtre complète, mais 0/3 et 1/3 fenêtres hors échantillon).
+Un bon résultat sur la fenêtre complète ne vaut rien — c'est tout l'objet du
+garde-fou. Voir [`results/experiments.md`](results/experiments.md) et le
+[CHANGELOG](CHANGELOG.md).
 
 ---
 
