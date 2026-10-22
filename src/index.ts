@@ -3,7 +3,12 @@
 import "./utils/warnings.js";
 
 import { Command } from "commander";
-import { runBacktestImport, runBacktestRun, runBacktestWalkForward } from "./cli/backtest.js";
+import {
+  runBacktestImport,
+  runBacktestOptimize,
+  runBacktestRun,
+  runBacktestWalkForward,
+} from "./cli/backtest.js";
 import { runBackup } from "./cli/backup.js";
 import { runDashboard } from "./cli/dashboard.js";
 import { runDoctor, printDoctor } from "./cli/doctor.js";
@@ -162,6 +167,33 @@ program
         async (options: { days: number; label: string; timeframe: string; config?: string }) => {
           try {
             await runBacktestRun(options.days, options.label, {
+              root: getProjectRoot(),
+              timeframe: options.timeframe as "5m" | "15m" | "1h",
+              configPath: options.config,
+            });
+          } catch (error) {
+            console.error(`  ✘ ${messageOf(error)}`);
+            process.exitCode = 1;
+          }
+        },
+      ),
+  )
+  .addCommand(
+    new Command("optimize")
+      .description("walk-forward automatisé : optimise puis valide hors échantillon")
+      .option(
+        "--days <n>",
+        "profondeur historique en jours",
+        (value) => Number.parseInt(value, 10),
+        90,
+      )
+      .option("--windows <n>", "nombre de fenêtres", (value) => Number.parseInt(value, 10), 3)
+      .option("--timeframe <tf>", "timeframe rejoué (5m|15m|1h)", "15m")
+      .option("--config <path>", "fichier de configuration alternatif")
+      .action(
+        async (options: { days: number; windows: number; timeframe: string; config?: string }) => {
+          try {
+            await runBacktestOptimize(options.days, options.windows, {
               root: getProjectRoot(),
               timeframe: options.timeframe as "5m" | "15m" | "1h",
               configPath: options.config,

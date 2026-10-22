@@ -273,18 +273,83 @@ Le statut reste donc **« promu en paper, pas en live »**. La phase 4
 (l'allocateur) et la phase 5 (paper prolongé) sont les prochaines étapes
 naturales.
 
+### 2026-10-22 — deux stratégies jamais mesurées
+
+| Stratégie | PnL net | Trades | Win rate | PF | DD | Sharpe | Sensibilité |
+|---|---|---|---|---|---|---|---|
+| `relative_strength` 1 h | **+221,70 $ (+22,17 %)** | 526 | 44,11 % | 1,22 | 10,15 % | 2,79 | ✔ |
+| `regime_switch` 1 h | +50,96 $ (+5,10 %) | 152 | 39,47 % | 1,20 | 13,58 % | 1,14 | ✔ |
+
+`regime_switch` est la plus **économe en capital** : 152 trades et
+8,39 $ de frais pour +5,10 %, là où `relative_strength` dépense 31,77 $ de
+frais pour +22,17 %. La méta-stratégie filtre beaucoup de signaux : c'est
+précisément ce qu'on attend d'elle.
+
+`relative_strength` a le meilleur Sharpe, et son résultat **s'améliore** quand
+les frais montent (les coûts modifient la sélection des trades). C'est un
+signal encourageant — et c'est aussi pour ça qu'il faut le walk-forward.
+
+### 2026-10-22 — le walk-forward automatisé rejette TOUT
+
+Le walk-forward automatisé (optimisation sur la première moitié de chaque
+fenêtre, validation sur la seconde) a été passé sur les deux meilleures
+stratégies. **Les deux sont rejetées.**
+
+| Stratégie | Fenêtre 1 | Fenêtre 2 | Fenêtre 3 | Verdict |
+|---|---|---|---|---|
+| `mean_reversion` (9 jeux) | entraînement négatif | **+67,15 $** ✔ | entraînement négatif | **NON VALIDÉ** — 1/3 fenêtres, minimum 2 |
+| `relative_strength` (9 jeux) | dégradation 79,5 % | dégradation 53,9 % | dégradation 132,1 % | **NON VALIDÉ** — 0/3 fenêtres, paramètres instables |
+
+- **`relative_strength` semble le meilleur** sur la fenêtre complète :
+  **+221,70 $ (+22,17 %)**, 526 trades, win rate 44,11 %, PF 1,22,
+  drawdown 10,15 %, **Sharpe 2,79** — et elle *améliore* son résultat quand
+  les frais doublent (+322,96 $ à ×2). Sur le papier, c'est le meilleur
+  résultat du projet.
+- **Hors échantillon, ce résultat s'effondre.** Les trois fenêtres montrent
+  une dégradation de 79,5 %, 53,9 % et 132,1 %, et le jeu de paramètres
+  retenu **change du tout à chaque fenêtre** (3 jeux différents sur 3
+  fenêtres). C'est la signature d'un surapprentissage, pas d'un edge.
+
+- **Ce qu'on a appris** :
+  1. **Un bon résultat sur la fenêtre complète ne vaut rien.** Le +22 % de
+     `relative_strength` et le +16,7 % de `mean_reversion` (×3) disparaissent
+     dès qu'on les soumet à la validation hors échantillon. **C'est
+     exactement pour ça que le garde-fou existe**, et c'est la preuve qu'il
+     n'est pas décoratif : il vient de refuser deux configurations qui
+     semblaient excellentes.
+  2. **Le seuil d'hystérésis de l'allocateur ne peut pas réparer ça.** Il
+     compare des stratégies *sur la même période*, donc sur le même
+     surapprentissage.
+  3. **Les 90 jours d'historique ne suffisent pas** pour valider quoi que ce
+     soit sur cet univers. Les fenêtres d'entraînement font 15 jours : trop
+     court pour distinguer un edge d'un régime de marché.
+  4. La fenêtre 1 h reste le bon timeframe : c'est le seul qui donne des
+     résultats robustes à la sensibilité aux coûts, dans **toutes** les
+     stratégies testées.
+
+- **Décision** : **aucune configuration n'est encore promue.** La
+  configuration par défaut reste `mean_reversion` 1 h ×8, parce que c'est
+  celle qui passe le **plus** de contrôles (PnL > 0, sensibilité ✓) même si
+  elle échoue au walk-forward. Elle reste en **paper**, jamais en live.
+
 ### Hypothèses à tester ensuite
 
 - **D** — Rejouer sur 3 fenêtres non chevauchantes de 30 jours, dont une
-  choisie à l'avance **en perte** (le README l'exige : « dont au moins une
-  en régime défavorable »). La fenêtre #4 du walk-forward est déjà la
-  meilleure et la plus mauvaise : il faut une segmentation différente.
-- **E** — Optimiser `z_entry` / `z_exit` / `window` de `mean_reversion` par
-  **walk-forward**, pas sur la fenêtre complète : c'est la seule façon
-  d'éviter le surapprentissage, et c'est ce que la phase 7 automatisera.
-- **F** — Tester `relative_strength` (encore jamais jouée) : sur un univers
-  de 41 tokens, un classement cross-sectionnel peut être plus robuste
-  qu'une condition absolue sur un actif.
+  choisie à l'avance **en perte** : **fait** (le walk-forward automatisé le
+  fait, et il rejette les deux stratégies).
+- **E** — Optimiser `z_entry` / `z_exit` / `window` par **walk-forward**,
+  pas sur la fenêtre complète : **fait** (phase 7). Les deux stratégies
+  optimales sont rejetées.
+- **F** — Tester `relative_strength` : **fait** (+22,17 % en-sample,
+  rejeté hors échantillon).
+- **G** — Un univers **plus large et plus long** : 6 à 12 mois
+  d'historique, sur les tokens **par capitalisation** plutôt que par volume.
+  L'univers actuel (top-40 par volume sur 24 h) est un échantillon biaisé
+  vers les tokens agités — c'est-à-dire vers la population où le
+  surapprentissage est le plus facile.
+- **H** — Séparer le **signal** du **dimensionnement** : `relative_strength`
+  suggère que l'edge vient peut-être du *choix* des actifs plutôt que de la
+  condition elle-même.
 
 ---
 

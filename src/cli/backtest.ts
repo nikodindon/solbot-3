@@ -9,6 +9,8 @@ import {
   insertBacktestTrades,
 } from "../backtest/store.js";
 import { runSensitivity } from "../backtest/sensitivity.js";
+import { runAutoWalkForward } from "../backtest/auto-walk-forward.js";
+import { gridFor } from "../backtest/optimizer.js";
 import { runWalkForward } from "../backtest/walk-forward.js";
 import { getMergedCandles, importedCoverage } from "../state/imported-candles.js";
 import { listWatchlistMints } from "../state/market-data.js";
@@ -246,6 +248,75 @@ export async function runBacktestWalkForward(
     );
     if (aggregate.netPnlUsd <= 0) {
       warn("agrégat non positif", "aucune fenêtre ne produit de résultat exploitable");
+    }
+    blank();
+  } finally {
+    closeRuntime(runtime);
+  }
+}
+
+/** `backtest optimize` — walk-forward automatisé avec garde anti-surapprentissage. */
+export async function runBacktestOptimize(
+  days: number,
+  windows: number,
+  options: BacktestOptions & { timeframe?: "5m" | "15m" | "1h"; configPath?: string } = {},
+): Promise<void> {
+  const runtime = createRuntime({ root: options.root, configPath: options.configPath });
+  try {
+    const timeframe = options.timeframe ?? "15m";
+    const grid = gridFor(runtime.config);
+
+    heading(`solbot3 backtest optimize — ${windows} fenêtres sur ${days} j (${timeframe})`);
+
+    if (grid.length === 0) {
+      fail("aucune stratégie activée", "activez au moins une stratégie dans la configuration");
+      blank();
+      return;
+    }
+
+    info("grille", `${grid.length} jeux de paramètres`);
+    info("protocole", "optimisation sur la 1re moitié de chaque fenêtre, validation sur la 2e");
+    blank();
+
+    const result = await runAutoWalkForward({
+      sourceDb: runtime.db,
+      cfg: runtime.config,
+      days,
+      windows,
+      timeframe,
+      grid,
+      minTrades: 5,
+      maxDegradationRatio: 0.5,
+      onProgress: (done, total, label) => {
+        if (done === total || done % 3 === 0) {
+          process.stdout.write(`  ${done}/${total}  ${label}\r`);
+        }
+      },
+    });
+    process.stdout.write("\n");
+    blank();
+
+    info("fenêtres");
+    for (const window of result.windows) {
+      const pnl = window.outOfSample?.netPnlUsd;
+      note(
+        `#${window.index}  ${new Date(window.testFromMs).toISOString().slice(0, 10)} → ${new Date(window.testToMs).toISOString().slice(0, 10)}  ` +
+          `retenu : ${window.chosen ?? "—"}  hors échantillon : ${pnl === undefined ? "n/d" : `${pnl.toFixed(2)} $`}  ` +
+          `${window.accepted ? "✔" : `✘ ${window.reason ?? ""}`}`,
+      );
+    }
+
+    blank();
+    info("PnL hors échantillon agrégé", `${result.aggregatePnlUsd.toFixed(2)} $`);
+    info("trades hors échantillon", String(result.aggregateTrades));
+    info("fenêtres validées", `${result.acceptedWindows}/${result.windows.length}`);
+    info("stabilité des paramètres", result.stable ? "stable" : "instable");
+
+    blank();
+    if (result.conclusive) {
+      ok("VALIDÉ", "la configuration survit à la validation hors échantillon");
+    } else {
+      fail("NON VALIDÉ", result.reason ?? "raison inconnue");
     }
     blank();
   } finally {

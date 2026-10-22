@@ -1,0 +1,158 @@
+# Variante de configuration — méta-stratégie `regime_switch`
+#
+# Route vers `trend_breakout` en régime trending et `mean_reversion` en
+# régime ranging, et écarte tout signal émis hors du régime correspondant.
+#
+# Usage :
+#   npm run solbot3 -- backtest run --days 90 --timeframe 1h --label rgs \
+#     --config config/strategies/regime-switch.yaml
+
+# ── Mode et garde-fous ─────────────────────────────────────────
+mode: paper                     # paper | dry_run | live
+confirm_live: false             # doit être true pour autoriser live
+base_currency: USDC
+loop_interval_s: 30
+
+# ── Univers ────────────────────────────────────────────────────
+universe:
+  source: toptraded             # toptraded | toporganicscore | toptrending | whitelist
+  interval: 24h                 # 5m | 1h | 6h | 24h
+  candidate_limit: 100
+  verified_only: true
+  min_liquidity_usd: 250000
+  min_organic_score: 60
+  min_age_hours: 24             # évite les tokens récents (frais Jupiter 50 bps, rug)
+  blacklist_mints: []
+  whitelist_mints: []
+  max_watchlist: 40
+
+# ── Données ────────────────────────────────────────────────────
+data:
+  timeframes: [5m, 15m, 1h]
+  stale_price_max_s: 300        # au-delà : le prix n'est pas utilisable pour décider
+  require_price_source: [discovery, candle]   # origines acceptées pour une décision
+  regime:
+    timeframe: 15m
+    window: 48
+    trend_threshold_pct: 4      # variation minimale pour « trending »
+    range_max_pct: 2.5          # amplitude maximale pour « ranging »
+
+# ── Stratégies (chacune peut tourner en shadow) ────────────────
+strategies:
+  # La fenêtre 1 h est le premier levier : 3,6 fois moins de turnover, et
+  # des frais divisés par 3. Voir results/experiments.md.
+  trend_breakout:
+    enabled: false
+    timeframe: 1h
+    params: { ema_fast: 12, ema_slow: 26, breakout_lookback: 20, rsi_period: 14, rsi_max: 68, volume_mult: 1.5, atr_stop_mult: 2.0 }
+  mean_reversion:
+    enabled: true
+    timeframe: 1h
+    params: { window: 96, z_entry: 2.0, z_exit: 0.5 }
+  grid:
+    enabled: false
+    timeframe: 15m
+    params: { step_pct: 1.0, levels: 5 }
+  dca_rotation:
+    enabled: false
+    params: { target_alloc: { SOL: 0.4, USDC: 0.6 }, drift_trigger_pct: 5, topup_usdc: 25 }
+  relative_strength:
+    enabled: false
+    timeframe: 1h
+    params: { lookback_h: 24, top_n: 3, rebalance_h: 6 }
+  regime_switch:
+    enabled: true
+    params: {}
+
+# ── Allocation (portefeuilles fantômes) ────────────────────────
+allocator:
+  score_window_days: 7
+  min_trades_to_score: 10
+  hysteresis_pct: 15            # une stratégie doit dépasser la pilote de 15 % pour la remplacer
+  min_edge_over_costs: 8.0      # edge net estimé ≥ 8 × coûts totaux, sinon rejet
+  pilot_allocation_pct: 100     # part du capital confiée à la stratégie pilote
+
+# ── Risque (le RiskManager a toujours le dernier mot) ──────────
+risk:
+  max_position_pct: 5           # % du NAV par position
+  max_positions: 6
+  max_asset_exposure_pct: 15
+  daily_loss_limit_pct: 3       # pause des entrées jusqu'à minuit UTC
+  max_drawdown_pct: 15          # kill-switch automatique
+  stop_loss_pct: 12
+  take_profit_pct: 20
+  trailing_stop: { activation_pct: 8, retrace_pct: 4 }
+  max_price_impact_pct: 1.0
+  max_slippage_bps: 100
+  min_time_between_trades_s: 300
+  sol_gas_reserve: 0.05
+
+# ── Simulation (paper et dry-run) ──────────────────────────────
+paper:
+  initial_usdc: 1000
+  fill_slippage_bps: 20
+  impact_k: 0.5
+  priority_fee_sol: 0.00005
+
+# ── Exécution (live) ───────────────────────────────────────────
+execution:
+  path: meta_aggregator         # meta_aggregator | router (router : opt-in, non validé)
+  slippage: rtse                # rtse | adaptive | <bps>
+  slippage_adaptive:            # paramètres du mode « adaptive »
+    timeframe: 15m
+    period: 14
+    multiplier: 1
+    min_bps: 10
+    max_bps: 100
+  retries: 3
+  retry_backoff_ms: 750
+  confirm_timeout_s: 60
+  router:
+    landing: rpc                # rpc | tx_jup | jito
+    tip_lamports: 0
+    cu_limit_buffer: 1.2
+    cu_price_cap_microlamports: 0
+
+# ── Protections on-chain (phase 7) ─────────────────────────────
+trigger:
+  enabled: false
+  take_profit_orders: true      # ordre limite de vente déposé à chaque entrée
+  stop_loss_orders: false       # à évaluer : un stop on-chain peut être déclenché sur un spike
+
+# ── Garde-fou live ─────────────────────────────────────────────
+guard:
+  min_backtest_days: 60
+  min_windows: 3                # au moins 3 fenêtres de marché distinctes
+  require_positive_oos_pnl: true
+  max_cost_sensitivity_drop_pct: 40   # le résultat ne doit pas s'effondrer si les coûts +50 %
+
+# ── Laboratoire (expériences isolées, paper uniquement) ───────
+lab:
+  allow_no_stop: false          # le vrai : un run sans stop exige ce drapeau explicite
+  initial_usdc: 100
+  max_bet_usd: 1
+  database_path: ./data/lab.sqlite
+
+# ── Supervision ────────────────────────────────────────────────
+notifications:
+  telegram:
+    enabled: false
+    notify_on: [trade, error, daily_report, alert]
+    commands_enabled: true
+    daily_report_utc_hour: 8
+monitoring:
+  enabled: true
+  host: 127.0.0.1
+  port: 9464
+dashboard:
+  enabled: true
+  host: 0.0.0.0              # accessible via Tailscale ; à restreindre si exposé
+  port: 4200
+backups:
+  enabled: true
+  dir: ./data/backups
+  keep: 14
+  daily_utc_hour: 3
+
+database:
+  path: ./data/solbot3.sqlite

@@ -332,7 +332,15 @@ export const monitoringSchema = z.strictObject({
 
 export const dashboardSchema = z.strictObject({
   enabled: z.boolean().default(true),
-  host: z.string().default("127.0.0.1"),
+  /**
+   * Interface d'écoute.
+   *
+   * `0.0.0.0` rend le dashboard accessible depuis le réseau (pratique via un
+   * VPN comme Tailscale). Dans ce cas, `DASHBOARD_TOKEN` devrait être
+   * défini : le dashboard est en lecture seule, mais ses données restent
+   * lisibles par quiconque atteint l'interface.
+   */
+  host: z.string().default("0.0.0.0"),
   port: positiveInt(1, 65_535).default(4200),
 });
 

@@ -76,6 +76,14 @@ export interface EngineDeps {
   stop: StopSwitch;
   /** Horloge (seam) — le backtest rejoue le temps. */
   clock: () => number;
+  /**
+   * Journaliser les décisions en base ?
+   *
+   * Par défaut oui. L'optimiseur le met à `false` : il lance des centaines
+   * de backtests, et écrire 350 000 lignes de décisions à chaque fois est
+   * le principal poste de coût — sans aucun intérêt.
+   */
+  journalDecisions?: boolean;
   /** Journalisation externe (dashboard, SSE). */
   onDecision?: (decision: Decision) => void;
 }
@@ -449,7 +457,9 @@ export class Engine {
       }
 
       // ── 5. Journal ────────────────────────────────────────────────────
-      insertDecisions(this.deps.db, decisions);
+      if (this.deps.journalDecisions !== false) {
+        insertDecisions(this.deps.db, decisions);
+      }
 
       const finalPositions = listPositions(this.deps.db);
       const finalView = buildPortfolioView(finalPositions, prices, this.deps.cash.cashUsd(), tsMs);
@@ -489,7 +499,9 @@ export class Engine {
       this.consecutiveErrors += 1;
       const message = error instanceof Error ? error.message : String(error);
       record("error", `erreur de tick : ${message}`);
-      insertDecisions(this.deps.db, decisions);
+      if (this.deps.journalDecisions !== false) {
+        insertDecisions(this.deps.db, decisions);
+      }
       return this.report(tsMs, tickId, false, message, decisions);
     } finally {
       this.busy = false;

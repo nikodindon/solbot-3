@@ -137,7 +137,7 @@ monitoring:
   port: 9464
 dashboard:
   enabled: true
-  host: 127.0.0.1
+  host: 0.0.0.0              # accessible via Tailscale ; à restreindre si exposé
   port: 4200
 backups:
   enabled: true

@@ -57,6 +57,8 @@ export interface BacktestOptions {
   toMs?: number;
   /** Progression. */
   onProgress?: (done: number, total: number) => void;
+  /** Journalise les décisions en base (désactivé par l'optimiseur). */
+  journalDecisions?: boolean;
 }
 
 export interface BacktestResult {
@@ -273,6 +275,7 @@ export async function runBacktest(options: BacktestOptions): Promise<BacktestRes
     cash,
     stop: new MemoryStopSwitch(),
     clock: () => clock,
+    journalDecisions: options.journalDecisions !== false,
   });
 
   for (const [index, sample] of samples.entries()) {
