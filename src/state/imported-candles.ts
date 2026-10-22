@@ -12,6 +12,17 @@ import { queryAll, queryGet } from "./sql.js";
  * - le volume live est conservé quand l'import n'en fournit pas.
  */
 
+/**
+ * Facteur de changement d'échelle considéré comme une **migration de pool**
+ * (et non comme un mouvement de prix).
+ *
+ * Un token qui passe de 1 300 $ à 0,05 $ en une heure n'a pas bougé de
+ * 26 000 % : c'est un changement d'unité (migration de pool, redenomination).
+ * Le seuil est volontairement haut — un memecoin peut legitimately faire
+ * ×10 en une heure — pour ne pas couper une vraie tendance.
+ */
+export const SCALE_BREAK_FACTOR = 50;
+
 export interface ImportedCandle {
   mint: string;
   tf: Timeframe;
@@ -154,9 +165,7 @@ export function getMergedCandles(
     ...liveParams,
   );
 
-  const limited = options.limit !== undefined ? rows.slice(0, options.limit) : rows;
-
-  return limited.map((row) => ({
+  const mapped: ImportedCandle[] = rows.map((row) => ({
     mint,
     tf,
     ts: row.ts,
@@ -167,4 +176,41 @@ export function getMergedCandles(
     volumeUsd: row.volume_usd,
     source: row.source,
   }));
+
+  // On retire l'historique antérieur à un éventuel changement d'échelle.
+  const consistent = dropScaleBreaks(mapped);
+
+  return options.limit !== undefined && consistent.length > options.limit
+    ? consistent.slice(consistent.length - options.limit)
+    : consistent;
+}
+
+/**
+ * Supprime la partie de l'historique antérieure à un changement d'échelle.
+ *
+ * Un *pool migration* change l'unité de cotation du même token : l'historique
+ * importé (en旧的 unités) et les prix vivants (en unités courantes) ne sont
+ * pas comparables. Mélanger les deux produit un z-score aberrant — c'est
+ * exactement ce qui a fait acheter ZCAT sur un « écart de −99,99 % ».
+ *
+ * On conserve **seulement** la partie postérieure à la rupture : la série
+ * redevient homogène, et les indicateurs ont un sens.
+ */
+export function dropScaleBreaks(candles: ImportedCandle[]): ImportedCandle[] {
+  if (candles.length < 2) return candles;
+
+  let breakIndex = -1;
+  for (let i = candles.length - 1; i > 0; i--) {
+    const previous = candles[i - 1]?.close ?? 0;
+    const current = candles[i]?.close ?? 0;
+    if (previous <= 0 || current <= 0) continue;
+
+    const ratio = current / previous;
+    if (ratio >= SCALE_BREAK_FACTOR || ratio <= 1 / SCALE_BREAK_FACTOR) {
+      breakIndex = i;
+      break;
+    }
+  }
+
+  return breakIndex > 0 ? candles.slice(breakIndex) : candles;
 }

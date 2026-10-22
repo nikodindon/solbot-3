@@ -125,9 +125,33 @@ export function runShadows(
     // La stratégie est évaluée contre **son** livre.
     const shadowView = shadowPortfolioView(book, input.prices);
     const shadowEval = input.evaluate(strategy, shadowView);
+    let enteredThisTick = false;
     for (const note of shadowEval.notes) notes.push({ strategy: strategy.name, note });
 
+    // ── Le shadow imite le livre réel ───────────────────────────────────
+    //
+    // Sans cela, le shadow prenait **tous** les signaux d'un tick alors que
+    // le livre réel n'en prend qu'un, et il n'avait ni plafond de
+    // positions ni cooldown. Sa performance n'était donc pas comparable à
+    // celle du livre réel — ce qui rendait la lecture « shadow à 1 000 $,
+    // réel à 988 $ » incompréhensible.
     for (const signal of shadowEval.signals) {
+      if (signal.side === "buy") {
+        // Une seule entrée par tick, comme le livre réel.
+        if (enteredThisTick) continue;
+        // Plafond de positions, comme le livre réel.
+        if (book.positions.size >= risk.max_positions) continue;
+        // Cooldown par actif, comme le livre réel.
+        const last = shadowLastTradeAt(db, strategy.name, signal.assetMint);
+        if (last !== null && input.tsMs - last < risk.min_time_between_trades_s * 1000) continue;
+
+        applyShadowSignal(db, strategy.name, book, signal, input, costs, spec, risk);
+        enteredThisTick = true;
+        continue;
+      }
+
+      // Les sorties ne sont pas limitées : le livre réel ne l'est pas
+      // non plus (une position qui sort, sort).
       applyShadowSignal(db, strategy.name, book, signal, input, costs, spec, risk);
     }
 
@@ -246,4 +270,14 @@ function applyShadowSignal(
     pnlUsd: null,
   });
   void spec;
+}
+
+/**
+ * Dernier trade d'un shadow sur un actif — pour le cooldown.
+ */
+function shadowLastTradeAt(db: DB, shadow: string, mint: string): number | null {
+  const row = db
+    .prepare("SELECT MAX(ts_ms) AS ts FROM shadow_trades WHERE shadow = ? AND mint = ?")
+    .get(shadow, mint) as { ts: number | null } | undefined;
+  return row?.ts ?? null;
 }

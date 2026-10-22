@@ -15,7 +15,7 @@ import type { DB } from "../state/db.js";
 import { insertDecisions, type Decision, type DecisionKind } from "../state/decisions.js";
 import { insertEquityPoint } from "../state/equity.js";
 import { kvGet, kvGetNumber, kvSet, kvSetNumber, STATE_KEYS } from "../state/kv.js";
-import { listWatchlistMints } from "../state/market-data.js";
+import { listWatchlistMints, resolveSymbol } from "../state/market-data.js";
 import { listPositions } from "../state/portfolio-repo.js";
 import type { CashLedger, Executor } from "../execution/executor.js";
 import type { CostConfig } from "../execution/costs.js";
@@ -582,10 +582,17 @@ export class Engine {
     return { tsMs, assets };
   }
 
+  /**
+   * Symbole lisible d'un actif.
+   *
+   * Le mint tronqué rendait le dashboard illisible (« 9cRC… ») : on va
+   * chercher le vrai symbole dans la base, et on ne retombe sur le troncature
+   * qu'en dernier recours.
+   */
   private symbolOf(mint: string): string {
     if (mint === SOL_MINT) return "SOL";
     if (mint === USDC_MINT) return "USDC";
-    return `${mint.slice(0, 4)}…`;
+    return resolveSymbol(this.deps.db, mint);
   }
 
   /**

@@ -92,6 +92,7 @@ const CONFIG: AppConfig = {
     trailing_stop: { activation_pct: 6, retrace_pct: 3 },
     max_price_impact_pct: 1,
     max_slippage_bps: 100,
+    max_expected_move_bps: 5_000,
     min_time_between_trades_s: 0,
     sol_gas_reserve: 0.05,
   },

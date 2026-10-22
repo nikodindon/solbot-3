@@ -332,6 +332,69 @@ stratégies. **Les deux sont rejetées.**
   celle qui passe le **plus** de contrôles (PnL > 0, sensibilité ✓) même si
   elle échoue au walk-forward. Elle reste en **paper**, jamais en live.
 
+### 2026-10-22 — trois bugs trouvés en observant le paper (et un quatrième, d'affichage)
+
+Le paper qui tourne depuis des heures a révélé des défauts que les tests ne
+voyaient pas. Ils sont tous corrigés.
+
+#### 1. Un changement d'échelle en données : le faux signal « ZCAT »
+
+La position ZCAT a été ouverte sur un **z-score de −8,48**, soit un écart
+de **−99,99 %** à la moyenne. L'investigation a montré que les deux séries
+n'étaient pas dans la même unité :
+
+```
+bougies importées (GeckoTerminal) : 795 $ … 1 677 $   (1 242 bougies)
+bougies collectées en direct       : 0,047 $ … 0,050 $  (24 bougies)
+```
+
+C'est un **changement d'unité** (migration de pool ou redenomination), pas
+un mouvement de prix. La fusion donnait la priorité à l'import, donc la
+fenêtre de 96 bougies du z-score mélangeait deux échelles.
+
+Conséquence : la stratégie croyait voir une opportunité à −99,99 %, l'edge
+annoncé (1 948 000 bps) franchissait n'importe quel seuil, et le stop était
+bloqué au maximum de 50 %.
+
+**Correctif** : à la fusion, on cherche une **rupture d'échelle** (un
+changement de prix supérieur à ×50 entre deux bougies consécutives) et on
+**supprime l'historique antérieur**. ZCAT est désormais à z = −1,19 : plus de
+faux signal, et la stratégie refuse de le trader.
+
+#### 2. Un edge annoncé absurde n'est pas une opportunité
+
+Un mouvement attendu de 26 000 % ne vient pas du marché : il vient de
+données corrompues. Le RiskManager refuse maintenant tout edge au-delà de
+`risk.max_expected_move_bps` (5 000 bps par défaut), avec une règle de
+rejet dédiée : `implausible_edge`.
+
+#### 3. Le shadow n'était pas un miroir du livre réel
+
+Le shadow prenait **tous** les signaux d'un tick, n'avait **ni plafond de
+positions ni cooldown**. Sa performance n'était donc pas comparable à celle
+du livre réel — d'où un écart inexpliqué (shadow à 1 000 $, réel à 988 $)
+qu'on ne savait pas interpréter.
+
+**Correctif** : le shadow applique maintenant exactement les mêmes règles
+(une entrée par tick, plafond de positions, cooldown par actif). L'écart
+résiduel ne vient plus de règles différentes, mais du fait que le shadow est
+**reconstruit** sur les 7 derniers jours : son point de départ est le début
+de la fenêtre, pas le début réel de la session.
+
+#### 4. Les noms d'actifs étaient illisibles
+
+Le moteur mémorisait un mint tronqué (`9cRC…`) comme symbole, et c'est ce
+tronçon qui s'affichait dans le dashboard. Le symbole réel est maintenant
+résolu depuis la table des tokens (`ANSEM`), avec un repli sur le symbole
+mémorisé à l'ouverture de la position — un token peut sortir de la watchlist,
+sa position doit rester lisible.
+
+- **Ce qu'on a appris** : un bot qui tourne longtemps en paper apprend des
+  choses qu'aucun test ne devine. Les quatre défauts ci-dessus étaient
+  invisibles sur des backtests, et le troisième (le shadow) aurait **invalidé
+  la comparaison entre stratégies** — c'est-à-dire l'instrument même dont
+  dépend l'allocateur.
+
 ### Hypothèses à tester ensuite
 
 - **D** — Rejouer sur 3 fenêtres non chevauchantes de 30 jours, dont une

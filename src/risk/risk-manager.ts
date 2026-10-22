@@ -23,6 +23,7 @@ export type RiskRule =
   | "max_positions"
   | "asset_exposure"
   | "edge_net"
+  | "implausible_edge"
   | "price_impact"
   | "cooldown"
   | "gas_reserve"
@@ -140,6 +141,24 @@ export class RiskManager {
         flags,
         cost,
         { openPositions: flags.openPositions },
+      );
+    }
+
+    // ── 4b. Plausibilité de l'edge ──────────────────────────────────────
+    // Un mouvement attendu de 26 000 % ne vient pas du marché : il vient
+    // de données corrompues (changement d'échelle de pool, prix fantaisiste).
+    // On refuse de trader là-dessus : c'est un garde-fou de **données**, pas
+    // une restriction de style.
+    if (signal.expectedMoveBps > this.risk.max_expected_move_bps) {
+      return this.reject(
+        "implausible_edge",
+        `mouvement attendu de ${signal.expectedMoveBps.toFixed(0)} bps > ${this.risk.max_expected_move_bps} bps — donnée probablement corrompue`,
+        flags,
+        cost,
+        {
+          expectedMoveBps: signal.expectedMoveBps,
+          maxExpectedMoveBps: this.risk.max_expected_move_bps,
+        },
       );
     }
 

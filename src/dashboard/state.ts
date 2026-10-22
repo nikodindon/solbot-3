@@ -4,7 +4,7 @@ import { listDecisions } from "../state/decisions.js";
 import { listEquity } from "../state/equity.js";
 import { getMergedCandles } from "../state/imported-candles.js";
 import { kvGetNumber, kvGet, STATE_KEYS } from "../state/kv.js";
-import { listWatchlist } from "../state/market-data.js";
+import { listWatchlist, resolveSymbol } from "../state/market-data.js";
 import { listPositions } from "../state/portfolio-repo.js";
 import { costBreakdown, listTrades } from "../state/trades.js";
 import { shadowNavSeries, shadowTradeCount } from "../allocator/shadow.js";
@@ -162,7 +162,9 @@ export function buildDashboardState(
     const unrealizedUsd = (priceUsd - position.avgEntryUsd) * position.qty;
     return {
       mint: position.mint,
-      symbol: position.symbol,
+      // Le symbole stocké à l'ouverture peut être un mint tronqué : on
+      // va chercher le vrai nom dans la base.
+      symbol: resolveSymbol(db, position.mint, position.symbol),
       qty: position.qty,
       avgEntryUsd: position.avgEntryUsd,
       priceUsd,

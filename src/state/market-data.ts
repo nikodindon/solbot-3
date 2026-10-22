@@ -400,6 +400,24 @@ export function listWatchlist(db: DB): WatchlistItem[] {
 }
 
 /** Mints de la watchlist, dans l'ordre du classement. */
+/**
+ * Symbole lisible d'un mint.
+ *
+ * Le mint tronqué (« 9cRC… ») est illisible pour un humain : le symbole
+ * réel (« ANSEM ») est dans la table des tokens ou dans la watchlist.
+ * La position ** garde en mémoire son symbole au moment de l'ouverture —
+ * un token peut sortir de la watchlist, sa position doit rester lisible.
+ */
+export function resolveSymbol(db: DB, mint: string, fallback?: string | null): string {
+  const meta = getTokenMeta(db, mint);
+  if (meta?.symbol) return meta.symbol;
+
+  const watch = listWatchlist(db).find((item) => item.mint === mint);
+  if (watch?.symbol) return watch.symbol;
+
+  return fallback ?? `${mint.slice(0, 4)}…`;
+}
+
 export function listWatchlistMints(db: DB): string[] {
   return listWatchlist(db)
     .filter((item) => item.active)

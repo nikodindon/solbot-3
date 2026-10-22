@@ -217,6 +217,15 @@ export const riskSchema = z.strictObject({
   trailing_stop: trailingStopSchema.prefault({}),
   max_price_impact_pct: z.number().min(0).default(1.0),
   max_slippage_bps: positiveInt(1, 10_000).default(100),
+  /**
+   * Mouvement maximal attendu, en bps.
+   *
+   * Un edge annoncé absurdement grand n'est pas une opportunité : c'est un
+   * signe que les données sont corrompues (changement d'échelle, price
+   * fantaisiste). LeComparer à un seuil de plausibilité évite de payer des
+   * frais pour un signal qui n'a pas de sens.
+   */
+  max_expected_move_bps: positiveInt(1, 1_000_000).default(5_000),
   min_time_between_trades_s: positiveInt(0).default(300),
   sol_gas_reserve: z.number().min(0).default(0.05),
 });
