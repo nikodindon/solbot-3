@@ -17,7 +17,7 @@ Suivi de l'avancement, phase par phase. La spécification complète est dans
 | 4 | v0.5 | Allocateur shadow, lab, rapports, Telegram, supervision | Nul | ✅ **terminée** |
 | 5 | v0.6 | Exécution Jupiter : dry-run puis micro-live | Faible, encadré | ✅ **terminée** (jamais activée) |
 | 6 | v0.7 | Dashboard complet et observabilité avancée | Faible | ✅ **terminée** |
-| 7 | v1.0 | Ordres on-chain, keystore, chemins avancés, walk-forward | Encadré, mature | ⬜ à faire |
+| 7 | v1.0 | Ordres on-chain, keystore, chemins avancés, walk-forward | Encadré, mature | 🔶 **partiellement livrée** |
 
 ---
 
@@ -392,13 +392,54 @@ d'historique.
 
 ## Phase 7 — Intelligence et extensions (v1.0)
 
-- [ ] Ordres limite on-chain via Trigger API, déposés à chaque entrée (take-profit)
+- [x] Ordres limite on-chain via Trigger API, déposés à chaque entrée (take-profit)
 - [ ] Ordres DCA Trigger pour la rotation, si le backtest le justifie
-- [ ] Walk-forward automatisé avec garde anti-surapprentissage (validation out-of-sample obligatoire)
-- [ ] Keystore chiffré (argon2id + AES-GCM) et déverrouillage au démarrage
+- [x] Walk-forward automatisé avec garde anti-surapprentissage (validation out-of-sample obligatoire)
+- [x] Keystore chiffré (AES-256-GCM + scrypt) et déverrouillage au démarrage
 - [ ] Signer alternatif : service de signature distant
 - [ ] Sous-comptes par stratégie (un wallet par stratégie, PnL et risque cloisonnés)
 - [ ] Évaluation documentée de la copie de wallets (recherche seulement, pas d'implémentation avant validation)
+
+> ✅ **Le walk-forward automatisé est la pièce centrale de cette phase**, et
+> son résultat est le plus important du projet à ce jour : il **rejette** les
+> deux meilleures stratégies mesurées (+22,17 % et +16,71 % sur la fenêtre
+> complète, mais 0/3 et 1/3 fenêtres hors échantillon). Voir
+> `results/experiments.md`.
+
+### Trigger API — les ordres qui survivent à la panne
+
+Un take-profit déposé **sur la chaîne** s'exécute même si le bot est arrêté :
+c'est le seul filet qui résiste à une panne. Le client Trigger est branché sur
+l'exécuteur Jupiter, et le dépôt se fait **après** l'achat (un ordre ne peut
+pas précéder la position qu'il protège).
+
+Deux règles gouvernent l'usage :
+
+- on ne dépose un take-profit que s'il est **au-dessus** du prix d'entrée
+  (sinon c'est un stop déguisé, avec la pire des sémantiques) ;
+- le **stop-loss on-chain reste désactivé par défaut** : il se déclenche sur
+  une mèche de prix, donc à un prix que personne n'a vu. Il exige un
+  backtest dédié et le drapeau `trigger.stop_loss_orders`.
+
+Un échec de dépôt **ne fait pas échouer l'achat** : la position existe, le
+stop interne prend le relais, et l'échec est journalisé.
+
+### Keystore chiffré
+
+La clé privée peut être écrite dans un keystore chiffré (AES-256-GCM, clé
+dérivée par scrypt) au lieu de `.env` : `solbot3 init --keystore`. Le
+`.env` ne reçoit alors **pas** la clé.
+
+⚠ Le chiffrement protège le secret **au repos**. Il ne protège pas contre un
+attaquant ayant accès au processus en cours d'exécution : pour cela, il
+faudrait un service de signature distant (non implémenté).
+
+### Reste à faire en Phase 7
+
+- [ ] Ordres DCA Trigger pour la rotation
+- [ ] Service de signature distant (l'interface `Signer` le permet déjà)
+- [ ] Sous-comptes par stratégie
+- [ ] Évaluation documentée de la copie de wallets
 
 **DoD :** les secrets sont chiffrés au repos ; au moins un filet on-chain est
 actif en permanence en live ; un wallet de stratégie peut être révoqué et

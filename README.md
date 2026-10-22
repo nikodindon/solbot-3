@@ -979,13 +979,19 @@ Une phase ne commence que lorsque la précédente est verte sur sa **Definition 
 
 ### Phase 7 — Intelligence et extensions (v1.0)
 
-- [ ] Ordres limite on-chain via Trigger API, déposés à chaque entrée (take-profit)
+- [x] Ordres limite on-chain via Trigger API, déposés à chaque entrée (take-profit)
 - [ ] Ordres DCA Trigger pour la rotation, si le backtest le justifie
-- [ ] Walk-forward automatisé avec garde anti-surapprentissage (validation out-of-sample obligatoire)
-- [ ] Keystore chiffré (argon2id + AES-GCM) et déverrouillage au démarrage
+- [x] Walk-forward automatisé avec garde anti-surapprentissage (validation out-of-sample obligatoire)
+- [x] Keystore chiffré (AES-256-GCM, dérivation **scrypt**) et déverrouillage au démarrage
 - [ ] Signer alternatif : service de signature distant
 - [ ] Sous-comptes par stratégie (un wallet par stratégie, PnL et risque cloisonnés)
 - [ ] Évaluation documentée de la copie de wallets (recherche seulement, pas d'implémentation avant validation)
+
+> 📌 **Écart assumé sur le KDF.** Le README prévoyait argon2id ; l'implémentation
+> utilise **scrypt**, disponible nativement dans Node. Argon2id exigerait une
+> dépendance native (ou un portage WASM) pour un gain marginal sur ce modèle de
+> menace — qui protège le secret *au repos*, pas un attaquant ayant accès au
+> processus. Le chiffrement est AES-256-GCM, comme prévu.
 
 **DoD :** les secrets sont chiffrés au repos ; au moins un filet on-chain est actif en permanence en live ; un wallet de stratégie peut être révoqué et remplacé sans arrêter le bot.
 

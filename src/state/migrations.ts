@@ -307,6 +307,23 @@ export const MIGRATIONS: Migration[] = [
       CREATE INDEX IF NOT EXISTS idx_events_kind ON events (kind, ts_ms DESC);
     `,
   },
+  {
+    version: 8,
+    name: "protection-orders",
+    sql: `
+      -- Ordres de protection on-chain (Trigger API).
+      -- Un take-profit déposé sur la chaîne survit à l'arrêt du bot : c'est
+      -- le seul filet qui résiste à une panne.
+      CREATE TABLE IF NOT EXISTS protection_orders (
+        order_id   TEXT PRIMARY KEY,
+        mint       TEXT NOT NULL,
+        kind       TEXT NOT NULL,
+        symbol     TEXT NOT NULL,
+        created_ms INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_protection_mint ON protection_orders (mint);
+    `,
+  },
 ];
 
 /** Version du schéma actuellement appliquée (0 si base vierge). */

@@ -4,6 +4,7 @@ import { WalletError } from "../utils/errors.js";
 import { upsertEnvVar } from "../utils/env-file.js";
 import { getEnvPath, getProjectRoot } from "../utils/paths.js";
 import { generateWallet } from "../wallet/create.js";
+import { KeystoreSigner } from "../wallet/keystore-signer.js";
 import { blank, heading, note, ok, warn } from "./output.js";
 
 export interface InitOptions {
@@ -12,6 +13,15 @@ export interface InitOptions {
   force?: boolean;
   /** N'affiche pas le guide de financement (usage en test). */
   quiet?: boolean;
+  /**
+   * Écrit la clé dans un **keystore chiffré** plutôt que dans `.env`.
+   *
+   * La clé n'est alors jamais en clair sur le disque : elle est chiffrée avec
+   * une clé dérivée du mot de passe fourni.
+   */
+  keystore?: boolean;
+  /** Mot de passe du keystore (ou variable `SOLBOT3_KEYSTORE_PASSWORD`). */
+  password?: string;
 }
 
 export interface InitResult {
@@ -60,6 +70,7 @@ export async function runInit(options: InitOptions = {}): Promise<InitResult> {
   const root = options.root ?? getProjectRoot();
   const envPath = getEnvPath(root);
   const force = options.force === true;
+  const useKeystore = options.keystore === true;
 
   const existing = fs.existsSync(envPath) ? fs.readFileSync(envPath, "utf8") : null;
   const hasKey =
@@ -72,6 +83,45 @@ export async function runInit(options: InitOptions = {}): Promise<InitResult> {
   }
 
   const wallet = await generateWallet();
+
+  // ── Keystore chiffré ────────────────────────────────────────────────
+  if (useKeystore) {
+    const password = options.password ?? process.env.SOLBOT3_KEYSTORE_PASSWORD ?? "";
+    if (password.length < 8) {
+      throw new WalletError("mot de passe du keystore trop court (8 caractères minimum)", {
+        hint: "passez-le via --password ou la variable SOLBOT3_KEYSTORE_PASSWORD",
+      });
+    }
+
+    const keystorePath = path.join(root, "data", "keystore.json");
+    await KeystoreSigner.create(keystorePath, wallet.secretKeyBase58, password);
+
+    // Le .env ne reçoit **pas** la clé : elle ne vit que chiffrée.
+    const examplePath = path.join(root, ".env.example");
+    const template = fs.existsSync(examplePath)
+      ? fs.readFileSync(examplePath, "utf8")
+      : FALLBACK_ENV_TEMPLATE;
+    fs.writeFileSync(envPath, template, { mode: 0o600 });
+    fs.chmodSync(envPath, 0o600);
+
+    const result: InitResult = {
+      address: wallet.address,
+      envPath,
+      created: true,
+      patched: false,
+    };
+    if (!options.quiet) {
+      heading("solbot3 init — wallet chiffré (keystore)");
+      ok("Wallet généré", wallet.address);
+      ok("Keystore chiffré", keystorePath);
+      ok(".env créé (chmod 600)", envPath);
+      blank();
+      warn("La clé privée n'est jamais écrite en clair.");
+      note("Le mot de passe est demandé à chaque démarrage du bot en mode live.");
+      blank();
+    }
+    return result;
+  }
 
   const examplePath = path.join(root, ".env.example");
   const template = fs.existsSync(examplePath)

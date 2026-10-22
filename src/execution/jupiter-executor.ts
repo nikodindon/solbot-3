@@ -1,7 +1,10 @@
 import { VersionedTransaction } from "@solana/web3.js";
 import type { Connection } from "@solana/web3.js";
+import type { Timeframe } from "../config/schema.js";
 import { USDC_MINT } from "../constants.js";
 import type { SwapApi } from "../jupiter/swap.js";
+import type { TriggerApi } from "../jupiter/trigger.js";
+import { protectPosition } from "./protection.js";
 import { describeExecuteError, describeOrderFailure } from "../jupiter/swap.js";
 import type { DB } from "../state/db.js";
 import { addLot, reducePositionFifo, setStops } from "../state/portfolio-repo.js";
@@ -41,7 +44,7 @@ export interface JupiterExecutorDeps {
   slippageMode: "rtse" | "adaptive" | number;
   /** Paramètres du slippage adaptatif. */
   adaptive: {
-    timeframe: "5m" | "15m" | "1h";
+    timeframe: Timeframe;
     period: number;
     multiplier: number;
     minBps: number;
@@ -49,6 +52,19 @@ export interface JupiterExecutorDeps {
   };
   /** Confirmation interactive avant un envoi réel. */
   confirm?: (summary: string) => Promise<boolean>;
+  /**
+   * Dépose les ordres de protection on-chain après un achat.
+   *
+   * Un take-profit déposé sur la chaîne **survit à l'arrêt du bot** : c'est
+   * le filet qui résiste à une panne.
+   */
+  protection?: {
+    triggerApi: TriggerApi;
+    takeProfitOrders: boolean;
+    stopLossOrders: boolean;
+    baseMint: string;
+    expiryS?: number;
+  };
 }
 
 export class JupiterExecutor implements Executor {
@@ -218,7 +234,7 @@ export class JupiterExecutor implements Executor {
   }
 
   /** Live : la transaction est passée, on met à jour le portefeuille. */
-  private settle(
+  private async settle(
     intent: TradeIntent,
     order: { outAmount: string; router?: string; feeBps?: number },
     execution: {
@@ -226,7 +242,7 @@ export class JupiterExecutor implements Executor {
       totalInputAmount?: string | null;
       totalOutputAmount?: string | null;
     },
-  ): ExecuteResult {
+  ): Promise<ExecuteResult> {
     const { db } = this.deps;
 
     // Le PnL se calcule sur les **montants réels** reflétés par Jupiter
@@ -265,6 +281,54 @@ export class JupiterExecutor implements Executor {
         priceUsd * (1 + intent.takeProfitPct / 100),
         Date.now(),
       );
+
+      // ── Ordre de protection on-chain ───────────────────────────────
+      // Déposé **après** l'achat : il ne peut pas être exécuté avant que
+      // la position n'existe.
+      if (this.deps.protection) {
+        try {
+          await protectPosition(
+            {
+              db,
+              triggerApi: this.deps.protection.triggerApi,
+              takeProfitOrders: this.deps.protection.takeProfitOrders,
+              stopLossOrders: this.deps.protection.stopLossOrders,
+              expiryS: this.deps.protection.expiryS,
+            },
+            {
+              mint: intent.mint,
+              qty,
+              decimals: intent.decimals,
+              entryPriceUsd: priceUsd,
+              takeProfitUsd: priceUsd * (1 + intent.takeProfitPct / 100),
+              stopLossUsd: priceUsd * (1 - intent.stopLossPct / 100),
+              priceUsd,
+              baseMint: this.deps.protection.baseMint,
+              symbol: intent.symbol,
+            },
+          );
+        } catch (error) {
+          // Un take-profit on-chain qui échoue ne doit pas faire échouer
+          // l'achat : la position existe, le stop interne prend le relais.
+          insertTrade(db, {
+            tsMs: Date.now(),
+            mode: "live",
+            strategy: intent.strategy,
+            mint: intent.mint,
+            symbol: intent.symbol,
+            side: "buy",
+            priceUsd,
+            qty,
+            notionalUsd: inputAmount,
+            feeUsd: 0,
+            realizedPnlUsd: null,
+            reason: `ordre de protection on-chain non déposé : ${error instanceof Error ? error.message : String(error)}`,
+            signature: execution.signature ?? null,
+            status: "filled",
+          });
+        }
+      }
+
       return {
         ok: true,
         status: "filled",

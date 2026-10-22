@@ -51,9 +51,16 @@ program
   .command("init")
   .description("crée le wallet de trading et le fichier .env (chmod 600)")
   .option("--force", "écrase une clé existante (destructif)", false)
-  .action(async (options: { force?: boolean }) => {
+  .option("--keystore", "écrit la clé dans un keystore chiffré (jamais en clair)", false)
+  .option("--password <mdp>", "mot de passe du keystore", (value) => value)
+  .action(async (options: { force?: boolean; keystore?: boolean; password?: string }) => {
     try {
-      await runInit({ root: getProjectRoot(), force: options.force === true });
+      await runInit({
+        root: getProjectRoot(),
+        force: options.force === true,
+        keystore: options.keystore === true,
+        password: options.password,
+      });
     } catch (error) {
       console.error(`  ✘ ${messageOf(error)}`);
       const hint = (error as { hint?: string }).hint;

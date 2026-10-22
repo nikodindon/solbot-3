@@ -2,6 +2,7 @@ import { Connection } from "@solana/web3.js";
 import { Engine, FileStopSwitch, type MarketQuote, type MarketSource } from "../engine/engine.js";
 import { BuildApi } from "../jupiter/build.js";
 import { SwapApi } from "../jupiter/swap.js";
+import { TriggerApi } from "../jupiter/trigger.js";
 import { SOL_MINT, USDC_MINT } from "../constants.js";
 import { createRegistry } from "../monitoring/metrics.js";
 import { MonitoringServer } from "../monitoring/server.js";
@@ -196,13 +197,27 @@ export async function runStart(options: StartOptions = {}): Promise<void> {
             maxSlippageBps: runtime.config.risk.max_slippage_bps,
             slippageMode: runtime.config.execution.slippage,
             adaptive: {
-              timeframe: "15m",
-              period: 14,
-              multiplier: 1,
-              minBps: 10,
-              maxBps: runtime.config.risk.max_slippage_bps,
+              timeframe: runtime.config.execution.slippage_adaptive.timeframe,
+              period: runtime.config.execution.slippage_adaptive.period,
+              multiplier: runtime.config.execution.slippage_adaptive.multiplier,
+              minBps: runtime.config.execution.slippage_adaptive.min_bps,
+              maxBps: Math.min(
+                runtime.config.execution.slippage_adaptive.max_bps,
+                runtime.config.risk.max_slippage_bps,
+              ),
             },
             confirm: confirmFn,
+            // Les ordres de protection on-chain : un take-profit déposé sur
+            // la chaîne survit à l'arrêt du bot. Le stop-loss on-chain reste
+            // désactivé par défaut (il se déclenche sur une mèche de prix).
+            protection: runtime.config.trigger.enabled
+              ? {
+                  triggerApi: new TriggerApi(runtime.jupiter),
+                  takeProfitOrders: runtime.config.trigger.take_profit_orders,
+                  stopLossOrders: runtime.config.trigger.stop_loss_orders,
+                  baseMint: USDC_MINT,
+                }
+              : undefined,
           });
   } else {
     const virtualCash = new KvCash(runtime.db, runtime.config.paper.initial_usdc);
