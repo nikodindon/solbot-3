@@ -6,3 +6,6 @@ oldprojects/
 results/archive/
 package-lock.json
 README.md
+docs/*.md
+CHANGELOG.md
+PLAN.md

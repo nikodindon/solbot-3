@@ -51,6 +51,13 @@ garde-fou. Voir [`results/experiments.md`](results/experiments.md) et le
 
 ---
 
+> 📖 **Pour commencer** : la [présentation](docs/presentation.md) (le projet
+> expliqué sans jargon) et le [guide d'utilisation rapide](docs/guide.md)
+> (installer, lancer, tester une stratégie).
+> Le [CHANGELOG](CHANGELOG.md) résume chaque version.
+
+---
+
 ## 1. Présentation
 
 ### 1.1 Objectif
