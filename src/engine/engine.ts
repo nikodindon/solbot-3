@@ -13,7 +13,7 @@ import { classifyRegime, type RegimeConfig, type RegimeResult } from "../market/
 import type { ImportedCandle } from "../state/imported-candles.js";
 import type { DB } from "../state/db.js";
 import { insertDecisions, type Decision, type DecisionKind } from "../state/decisions.js";
-import { insertEquityPoint } from "../state/equity.js";
+import { attestNavPeak, insertEquityPoint } from "../state/equity.js";
 import { kvGet, kvGetNumber, kvSet, kvSetNumber, STATE_KEYS } from "../state/kv.js";
 import { listWatchlistMints, resolveSymbol } from "../state/market-data.js";
 import { listPositions } from "../state/portfolio-repo.js";
@@ -168,10 +168,14 @@ export class Engine {
       const positions = listPositions(this.deps.db);
       const view = buildPortfolioView(positions, prices, cashUsd, tsMs);
 
-      const peak = Math.max(
-        kvGetNumber(this.deps.db, STATE_KEYS.navPeakUsd) ?? view.navUsd,
-        view.navUsd,
-      );
+      const peakInfo = attestNavPeak(this.deps.db, this.deps.mode, view.navUsd);
+      if (peakInfo.discardedPeakUsd !== null) {
+        record(
+          "guard",
+          `pic d'équité ${peakInfo.discardedPeakUsd.toFixed(2)} $ non attesté par la courbe (maximum observé ${peakInfo.peakUsd.toFixed(2)} $) — réancré`,
+        );
+      }
+      const peak = peakInfo.peakUsd;
       kvSetNumber(this.deps.db, STATE_KEYS.navPeakUsd, peak, tsMs);
       const drawdownPct = peak > 0 ? Math.max(0, ((peak - view.navUsd) / peak) * 100) : 0;
 
@@ -258,6 +262,11 @@ export class Engine {
 
         if (result.ok) {
           executed.sells += 1;
+          // Le cooldown vaut pour le *dernier trade*, achat comme vente :
+          // c'est lui qui empêche le rachat immédiat après une sortie.
+          // (`checkExit` reçoit `lastTradeTsByMint: null` : une vente de
+          // protection n'est jamais bloquée par ce filtre.)
+          kvSetNumber(this.deps.db, `${STATE_KEYS.lastTradeTsByMint}:${position.mint}`, tsMs, tsMs);
           record(
             "exit",
             `${exit.kind} — ${position.symbol} vendu (PnL ${(result.realizedPnlUsd ?? 0).toFixed(2)} $)`,
@@ -277,66 +286,77 @@ export class Engine {
       // ── 4. Signaux et entrées ─────────────────────────────────────────
       let blockedBy: string | null = null;
 
+      for (const asset of snapshot.assets) {
+        if (!asset.regime) continue;
+        record("regime", `${asset.symbol} — ${asset.regime.regime} : ${asset.regime.reason}`, {
+          mint: asset.mint,
+          data: { regime: asset.regime.regime },
+        });
+      }
+
+      // ── Phase 4 : portefeuilles fantômes et allocation ────────────
+      //
+      // Chaque stratégie joue son propre portefeuille en parallèle, avec
+      // les mêmes coûts. L'une d'elles est choisie comme **pilote** : c'est
+      // la seule qui décide du capital réel.
+      //
+      // Cette phase tourne **y compris en kill-switch et en pause** : les
+      // shadows ne touchent jamais au capital réel, elles sont
+      // l'instrument de comparaison. Les figer en plus du livre réel
+      // détruirait la mesure précisément pendant un arrêt.
+      let pilot: string | null = null;
+
+      if (this.deps.allocator) {
+        const shadow = runShadows(
+          {
+            db: this.deps.allocator.db,
+            strategies: this.deps.strategies,
+            allocator: this.deps.allocator.allocator,
+            risk: this.deps.allocator.risk,
+            costs: this.deps.allocator.costs,
+            initialCashUsd: this.deps.allocator.initialCashUsd,
+          },
+          {
+            tsMs,
+            prices,
+            evaluate: (strategy, shadowPortfolio) => strategy.evaluate(snapshot, shadowPortfolio),
+          },
+        );
+
+        pilot = shadow.pilot;
+        record("alloc", shadow.decision.reason, {
+          data: {
+            pilot: shadow.pilot,
+            previousPilot: shadow.decision.previousPilot,
+            changed: shadow.decision.changed,
+            scores: shadow.scores.map((score) => ({
+              name: score.name,
+              scorePct: score.scorePct,
+              trades: score.trades,
+              eligible: score.eligible,
+              reason: score.reason,
+            })),
+          },
+        });
+        for (const note of shadow.notes) {
+          record("note", note.note, { strategy: note.strategy });
+        }
+      }
+
+      // ── Garde-fous du livre réel ──────────────────────────────────────
+      //
+      // Seul le **livre réel** est bloqué. Les shadows, plus haut, ne
+      // l'étaient pas.
       if (killSwitch) {
-        record("guard", "kill-switch actif — aucune entrée");
+        record("guard", "kill-switch actif — aucune entrée (les shadows continuent)");
         blockedBy = "kill_switch";
       } else if (pausedUntilMs !== null && pausedUntilMs > tsMs) {
         record("guard", "entrées en pause (limite de perte journalière)");
         blockedBy = "daily_loss_pause";
-      } else {
+      }
+
+      if (blockedBy === null) {
         const candidates: { signal: Signal; strategy: string }[] = [];
-
-        for (const asset of snapshot.assets) {
-          if (!asset.regime) continue;
-          record("regime", `${asset.symbol} — ${asset.regime.regime} : ${asset.regime.reason}`, {
-            mint: asset.mint,
-            data: { regime: asset.regime.regime },
-          });
-        }
-
-        // ── Phase 4 : portefeuilles fantômes et allocation ────────────
-        //
-        // Chaque stratégie joue son propre portefeuille en parallèle, avec
-        // les mêmes coûts. L'une d'elles est choisie comme **pilote** : c'est
-        // la seule qui décide du capital réel.
-        let pilot: string | null = null;
-
-        if (this.deps.allocator) {
-          const shadow = runShadows(
-            {
-              db: this.deps.allocator.db,
-              strategies: this.deps.strategies,
-              allocator: this.deps.allocator.allocator,
-              risk: this.deps.allocator.risk,
-              costs: this.deps.allocator.costs,
-              initialCashUsd: this.deps.allocator.initialCashUsd,
-            },
-            {
-              tsMs,
-              prices,
-              evaluate: (strategy, shadowPortfolio) => strategy.evaluate(snapshot, shadowPortfolio),
-            },
-          );
-
-          pilot = shadow.pilot;
-          record("alloc", shadow.decision.reason, {
-            data: {
-              pilot: shadow.pilot,
-              previousPilot: shadow.decision.previousPilot,
-              changed: shadow.decision.changed,
-              scores: shadow.scores.map((score) => ({
-                name: score.name,
-                scorePct: score.scorePct,
-                trades: score.trades,
-                eligible: score.eligible,
-                reason: score.reason,
-              })),
-            },
-          });
-          for (const note of shadow.notes) {
-            record("note", note.note, { strategy: note.strategy });
-          }
-        }
 
         // ── Phase 5 : la stratégie pilote décide, sur le livre réel ────
         for (const strategy of this.deps.strategies) {
@@ -542,23 +562,25 @@ export class Engine {
     // Chaque stratégie lit **son** timeframe : une stratégie en 1 h et une
     // stratégie en 15 m ne doivent pas voir la même fenêtre. On ne charge
     // donc que les timeframes réellement demandés.
-    const barsByTimeframe = new Map<Timeframe, number>();
-    for (const strategy of this.deps.strategies) {
-      for (const requirement of strategy.requires) {
-        const current = barsByTimeframe.get(requirement.timeframe) ?? 0;
-        barsByTimeframe.set(requirement.timeframe, Math.max(current, requirement.bars));
-      }
-    }
-    if (barsByTimeframe.size === 0) {
-      barsByTimeframe.set(this.deps.cfg.data.regime.timeframe, 48);
-    }
-
     const regimeCfg: RegimeConfig = {
       timeframe: this.deps.cfg.data.regime.timeframe,
       window: this.deps.cfg.data.regime.window,
       trendThresholdPct: this.deps.cfg.data.regime.trend_threshold_pct,
       rangeMaxPct: this.deps.cfg.data.regime.range_max_pct,
     };
+
+    const barsByTimeframe = new Map<Timeframe, number>();
+    // Le régime a **son** timeframe, distinct de celui des stratégies. Sans
+    // cette ligne, la fenêtre du régime n'est jamais chargée et chaque
+    // actif ressort « historique insuffisant (0 bougies) ».
+    barsByTimeframe.set(regimeCfg.timeframe, regimeCfg.window);
+    for (const strategy of this.deps.strategies) {
+      for (const requirement of strategy.requires) {
+        const current = barsByTimeframe.get(requirement.timeframe) ?? 0;
+        barsByTimeframe.set(requirement.timeframe, Math.max(current, requirement.bars));
+      }
+    }
+
     const classify = this.deps.regime ?? classifyRegime;
 
     const assets = [];

@@ -1,7 +1,7 @@
 import { SOL_MINT } from "../constants.js";
 import type { DB } from "../state/db.js";
 import { listDecisions } from "../state/decisions.js";
-import { listEquity } from "../state/equity.js";
+import { attestNavPeak, listEquity } from "../state/equity.js";
 import { getMergedCandles } from "../state/imported-candles.js";
 import { kvGetNumber, kvGet, STATE_KEYS } from "../state/kv.js";
 import { listWatchlist, resolveSymbol } from "../state/market-data.js";
@@ -145,7 +145,7 @@ export function buildDashboardState(
   const navUsd = last?.navUsd ?? 0;
   const cash = last?.cashUsd ?? 0;
   const realized = last?.realizedPnlUsd ?? 0;
-  const peak = kvGetNumber(db, STATE_KEYS.navPeakUsd) ?? navUsd;
+  const peak = attestNavPeak(db, cfg.mode, navUsd).peakUsd;
   const drawdownPct = peak > 0 ? Math.max(0, ((peak - navUsd) / peak) * 100) : 0;
 
   const positions = listPositions(db);

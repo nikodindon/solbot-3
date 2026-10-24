@@ -1,4 +1,5 @@
 import type { DB } from "./db.js";
+import { kvGetNumber, STATE_KEYS } from "./kv.js";
 import { queryAll, queryGet } from "./sql.js";
 
 /** Courbe d'équité : un point par tick. */
@@ -98,4 +99,49 @@ export function equityCount(db: DB, mode: string): number {
     mode,
   );
   return row?.n ?? 0;
+}
+
+/**
+ * Tolérance entre le pic stocké et le maximum réellement observé.
+ *
+ * Le pic est écrit en début de tick, le point d'équité en fin de tick : un
+ * écart d'un tick est normal. Au-delà de cette marge, aucun point de la
+ * courbe ne vient du pic allégué — il n'existe pas.
+ */
+const NAV_PEAK_TOLERANCE = 0.05;
+
+export interface NavPeakAttestation {
+  /** Le pic à utiliser pour le drawdown. */
+  peakUsd: number;
+  /** Le pic stocké que la courbe ne justifie pas (null sinon). */
+  discardedPeakUsd: number | null;
+}
+
+/**
+ * Pic d'équité **attesté** par la courbe.
+ *
+ * `bot_state.nav_peak_usd` n'est qu'un cache : la seule preuve qu'un pic a
+ * existé est un point de `equity_curve`. Un cache orphelin — reliquat d'un
+ * compte réinitialisé, écriture interrompue, reprise depuis un dump —
+ * produirait un drawdown fantôme et déclencherait le kill-switch à tort.
+ *
+ * On réaligne donc le cache sur ce que la courbe prouve, et on signale le
+ * pic écarté pour que le correctif soit visible dans le journal.
+ */
+export function attestNavPeak(db: DB, mode: string, navUsd: number): NavPeakAttestation {
+  const row = queryGet<{ max_nav: number | null }>(
+    db,
+    "SELECT MAX(nav_usd) AS max_nav FROM equity_curve WHERE mode = ?",
+    mode,
+  );
+  const curveMaxUsd = row?.max_nav ?? 0;
+  // Le NAV courant compte aussi : son point n'est écrit qu'en fin de tick.
+  const attestedUsd = Math.max(curveMaxUsd, navUsd);
+  const storedUsd = kvGetNumber(db, STATE_KEYS.navPeakUsd);
+
+  if (storedUsd === null) return { peakUsd: attestedUsd, discardedPeakUsd: null };
+  if (curveMaxUsd > 0 && storedUsd > attestedUsd * (1 + NAV_PEAK_TOLERANCE)) {
+    return { peakUsd: attestedUsd, discardedPeakUsd: storedUsd };
+  }
+  return { peakUsd: Math.max(storedUsd, attestedUsd), discardedPeakUsd: null };
 }

@@ -8,6 +8,10 @@ import { createBackup, listBackups, restoreBackup, verifyBackup } from "../../sr
 import { closeDb, openDb } from "../../src/state/db.js";
 import { migrate } from "../../src/state/migrations.js";
 import { parseCommand } from "../../src/notify/controller.js";
+import { appConfigSchema } from "../../src/config/schema.js";
+import { listEvents } from "../../src/state/events.js";
+import { kvSetNumber, STATE_KEYS } from "../../src/state/kv.js";
+import { Supervisor, type Notifier, type TickSummary } from "../../src/monitoring/supervisor.js";
 
 describe("registre de métriques", () => {
   it("incrémente les compteurs et pose les jauges", () => {
@@ -162,5 +166,126 @@ describe("commandes Telegram", () => {
     expect(parseCommand("/pnl@monbot 30")).toEqual({ name: "pnl", args: ["30"] });
     expect(parseCommand("bonjour")).toBeNull();
     expect(parseCommand("")).toBeNull();
+  });
+});
+
+describe("superviseur", () => {
+  const notStub: Notifier = { send: () => Promise.resolve(true), configured: false };
+
+  function makeSupervisor(options: { killSwitchExists?: () => boolean } = {}) {
+    const db = openDb({ path: ":memory:" });
+    migrate(db);
+    const registry = createRegistry();
+    const supervisor = new Supervisor({
+      db,
+      cfg: appConfigSchema.parse({}),
+      metrics: registry,
+      notifier: notStub,
+      backupDir: path.join(os.tmpdir(), "solbot3-superviseur"),
+      backup: () => undefined,
+      version: "test",
+      ...options,
+    });
+    return { db, registry, supervisor };
+  }
+
+  const tick = (over: Partial<TickSummary> = {}): TickSummary => ({
+    tsMs: Date.now(),
+    ok: true,
+    navUsd: 1000,
+    cashUsd: 500,
+    positionsOpen: 1,
+    drawdownPct: 0,
+    executed: { buys: 0, sells: 0 },
+    blockedBy: null,
+    pilotScorePct: null,
+    ...over,
+  });
+
+  it("relit le kill-switch depuis sa source, sans attendre de tick", () => {
+    let stopFile = false;
+    const { supervisor, db } = makeSupervisor({ killSwitchExists: () => stopFile });
+    try {
+      expect(supervisor.health().killSwitch).toBe(false);
+
+      // Le fichier STOP apparaît entre deux ticks : /healthz doit le voir
+      // immédiatement, pas au prochain tick.
+      stopFile = true;
+      expect(supervisor.health().killSwitch).toBe(true);
+
+      stopFile = false;
+      expect(supervisor.health().killSwitch).toBe(false);
+    } finally {
+      closeDb(db);
+    }
+  });
+
+  it("relit la pause journalière depuis le kv", () => {
+    const { db, supervisor } = makeSupervisor();
+    try {
+      expect(supervisor.health().paused).toBe(false);
+
+      kvSetNumber(db, STATE_KEYS.pausedUntilMs, Date.now() + 3_600_000, Date.now());
+      expect(supervisor.health().paused).toBe(true);
+
+      // Une pause expirée n'est plus une pause.
+      kvSetNumber(db, STATE_KEYS.pausedUntilMs, 0, Date.now());
+      expect(supervisor.health().paused).toBe(false);
+    } finally {
+      closeDb(db);
+    }
+  });
+
+  it("émet l'alerte critique quand le kill-switch se lève", () => {
+    let stopFile = false;
+    const { db, supervisor } = makeSupervisor({ killSwitchExists: () => stopFile });
+    try {
+      supervisor.onTick(tick());
+      expect(listEvents(db, { kind: "alert_kill_switch" })).toHaveLength(0);
+
+      stopFile = true;
+      supervisor.onTick(tick());
+
+      const alerts = listEvents(db, { kind: "alert_kill_switch" });
+      expect(alerts).toHaveLength(1);
+      expect(alerts[0]?.level).toBe("error");
+
+      // Un tick suivant ne répète pas l'alerte (cooldown, pas de transition).
+      supervisor.onTick(tick());
+      expect(listEvents(db, { kind: "alert_kill_switch" })).toHaveLength(1);
+    } finally {
+      closeDb(db);
+    }
+  });
+
+  it("conserve la dernière NAV valide quand un tick échoue", () => {
+    const { db, supervisor } = makeSupervisor();
+    try {
+      supervisor.onTick(tick({ navUsd: 966.28, positionsOpen: 2 }));
+
+      // Un tick sans prix ne valorise rien : il ne doit pas écrire 0 $.
+      supervisor.onTick(tick({ ok: false, navUsd: 0, positionsOpen: 0 }));
+
+      const health = supervisor.health();
+      expect(health.navUsd).toBeCloseTo(966.28, 6);
+      expect(health.positionsOpen).toBe(2);
+    } finally {
+      closeDb(db);
+    }
+  });
+
+  it("pose les jauges de NAV seulement sur un tick valide", () => {
+    const { db, registry, supervisor } = makeSupervisor();
+    try {
+      supervisor.onTick(tick({ navUsd: 966.28 }));
+      expect(registry.get(METRICS.navUsd)).toBeCloseTo(966.28, 6);
+
+      supervisor.onTick(tick({ ok: false, navUsd: 0 }));
+      expect(registry.get(METRICS.navUsd)).toBeCloseTo(966.28, 6);
+      // Le compteur d'erreurs, lui, progresse bien.
+      expect(registry.get(METRICS.tickErrorsTotal)).toBe(1);
+    } finally {
+      closeDb(db);
+    }
   });
 });

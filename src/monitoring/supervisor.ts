@@ -33,6 +33,8 @@ export interface SupervisorDeps {
   backupDir: string;
   /** Crée une sauvegarde ; injecté pour les tests. */
   backup?: () => void;
+  /** L'état du kill-switch, lu sur la source de vérité (fichier STOP). */
+  killSwitchExists?: () => boolean;
   /** Version du bot. */
   version: string;
 }
@@ -69,17 +71,24 @@ export class Supervisor {
 
     this.ticks += 1;
     this.lastTickAtMs = summary.tsMs;
-    this.lastNavUsd = summary.navUsd;
-    this.lastPositionsOpen = summary.positionsOpen;
+    // Un tick en échec ne valorise rien : il écrirait des zéros, qui
+    // valent « le portefeuille est vide » alors qu'il n'a pas été lu. On
+    // conserve la dernière valeur connue et la fraîcheur s'en charge.
+    if (summary.ok) {
+      this.lastNavUsd = summary.navUsd;
+      this.lastPositionsOpen = summary.positionsOpen;
+    }
 
     metrics.inc(METRICS.ticksTotal);
-    metrics.set(METRICS.navUsd, summary.navUsd);
-    metrics.set(METRICS.cashUsd, summary.cashUsd);
-    metrics.set(METRICS.positionsOpen, summary.positionsOpen);
-    metrics.set(METRICS.drawdownPct, summary.drawdownPct);
     metrics.set(METRICS.uptimeSeconds, (Date.now() - this.startedAtMs) / 1000);
     metrics.set(METRICS.lastTickTimestamp, summary.tsMs / 1000);
     metrics.inc(METRICS.tradesTotal, summary.executed.buys + summary.executed.sells);
+    if (summary.ok) {
+      metrics.set(METRICS.navUsd, summary.navUsd);
+      metrics.set(METRICS.cashUsd, summary.cashUsd);
+      metrics.set(METRICS.positionsOpen, summary.positionsOpen);
+      metrics.set(METRICS.drawdownPct, summary.drawdownPct);
+    }
 
     if (summary.pilotScorePct !== null) {
       metrics.set(METRICS.pilotScorePct, summary.pilotScorePct);
@@ -97,8 +106,31 @@ export class Supervisor {
       });
     }
 
+    // Les garde-fous sont relus à chaque tick : c'est ce qui permet de
+    // détecter le passage en kill-switch et d'émettre l'alerte critique.
+    this.refreshGuards();
+
     this.maybeDailyReport();
     this.maybeBackup();
+  }
+
+  /**
+   * Relit les garde-fous depuis leur source de vérité.
+   *
+   * Le kill-switch est le fichier STOP ; la pause journalière est
+   * `paused_until_ms` dans le kv. Aucun des deux n'est stocké par le
+   * superviseur : il lit, il ne décide pas.
+   */
+  private refreshGuards(nowMs: number = Date.now()): void {
+    const pausedUntil = kvGetNumber(this.deps.db, STATE_KEYS.pausedUntilMs) ?? 0;
+    this.lastPaused = pausedUntil > nowMs;
+    // Sans source injectée on garde ce qu'on sait plutôt que d'effacer.
+    const killSwitch = this.deps.killSwitchExists?.() ?? this.lastKillSwitch;
+    const raised = killSwitch && !this.lastKillSwitch;
+    this.lastKillSwitch = killSwitch;
+    if (raised) {
+      this.onKillSwitch("fichier STOP présent (drawdown ou arrêt manuel)");
+    }
   }
 
   /** Le kill-switch a été déclenché (par le moteur ou par une commande). */
@@ -138,6 +170,9 @@ export class Supervisor {
   } {
     const staleAfterS = Math.max(120, this.deps.cfg.loop_interval_s * 3);
     const ageS = this.lastTickAtMs === null ? null : Math.floor((nowMs - this.lastTickAtMs) / 1000);
+    // Les garde-fous sont relus ici aussi : `/healthz` doit être vrai même
+    // si aucun tick n'est arrivé depuis.
+    this.refreshGuards(nowMs);
 
     let status: "ok" | "stale" | "degraded" = "ok";
     if (this.dbError !== null) status = "degraded";
@@ -163,12 +198,6 @@ export class Supervisor {
   /** Signale une erreur d'accès à la base. */
   setDbError(error: string | null): void {
     this.dbError = error;
-  }
-
-  /** Le kill-switch est-il actif ? (lu depuis la base) */
-  refreshGuards(paused: boolean, killSwitch: boolean): void {
-    this.lastPaused = paused;
-    this.lastKillSwitch = killSwitch;
   }
 
   // ── Interne ────────────────────────────────────────────────────────────

@@ -117,17 +117,23 @@ export function addLot(
     ).run(mint, tsMs, qty, qty, priceUsd);
 
     const existing = getPosition(db, mint);
+    const reopening = existing !== null && existing.qty <= 0;
     const invested = (existing?.investedUsd ?? 0) + qty * priceUsd;
     const totalQty = (existing?.qty ?? 0) + qty;
     const avgEntry = totalQty > 0 ? invested / totalQty : 0;
 
     if (existing) {
+      // Une position déjà close (qty = 0) **rouvre** : son pic est celui de
+      // l'ancienne position, souvent très loin au-dessus. Le conserver
+      // armerait le trailing stop immédiatement et l'entrée sortirait au
+      // tick suivant. Un pic ne doit donc survivre qu'à un ajout.
+      const peak = reopening ? priceUsd : (existing.peakPriceUsd ?? priceUsd);
       db.prepare(
         `UPDATE positions
             SET qty = ?, invested_usd = ?, avg_entry_usd = ?, updated_ms = ?,
-                peak_price_usd = COALESCE(peak_price_usd, ?)
+                peak_price_usd = ?
           WHERE mint = ?`,
-      ).run(totalQty, invested, avgEntry, tsMs, priceUsd, mint);
+      ).run(totalQty, invested, avgEntry, tsMs, peak, mint);
     } else {
       db.prepare(
         `INSERT INTO positions

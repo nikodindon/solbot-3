@@ -4,6 +4,7 @@ import type { AppConfig } from "../../src/config/schema.js";
 import {
   Engine,
   MemoryStopSwitch,
+  type EngineDeps,
   type MarketQuote,
   type MarketSource,
 } from "../../src/engine/engine.js";
@@ -13,10 +14,13 @@ import { DEFAULT_COST_CONFIG } from "../../src/execution/costs.js";
 import { PaperExecutor } from "../../src/execution/executor.js";
 import { RiskManager } from "../../src/risk/risk-manager.js";
 import { enabledStrategies } from "../../src/strategies/registry.js";
+import type { Strategy } from "../../src/strategies/types.js";
 import { closeDb, openDb, type DB } from "../../src/state/db.js";
 import { listDecisions } from "../../src/state/decisions.js";
 import { listEquity } from "../../src/state/equity.js";
+import { kvGetNumber, kvSetNumber, STATE_KEYS } from "../../src/state/kv.js";
 import { upsertImportedCandles } from "../../src/state/imported-candles.js";
+import { addLot, setStops } from "../../src/state/portfolio-repo.js";
 import { migrate } from "../../src/state/migrations.js";
 import { listTrades } from "../../src/state/trades.js";
 
@@ -207,18 +211,20 @@ function buildEngine(
   market: ScriptedMarket,
   mode: "paper" | "backtest",
   candles: { ts: number; close: number }[],
+  overrides: Partial<EngineDeps> = {},
+  cfg: AppConfig = CONFIG,
 ): Engine {
   const cash = new KvCash(db, 1000);
   cash.seed(1000);
   const costs = DEFAULT_COST_CONFIG;
   const executor = new PaperExecutor({ db, mode, cash, costs });
-  const risk = new RiskManager(CONFIG.risk, CONFIG.allocator, costs);
+  const risk = new RiskManager(cfg.risk, cfg.allocator, costs);
 
   return new Engine({
     db,
-    cfg: CONFIG,
+    cfg,
     mode,
-    strategies: enabledStrategies(CONFIG.strategies),
+    strategies: enabledStrategies(cfg.strategies),
     market,
     candles: new MemoryCandleSource(
       candles.map((c) => ({
@@ -238,6 +244,7 @@ function buildEngine(
     cash,
     stop: new MemoryStopSwitch(),
     clock: () => market.currentTs,
+    ...overrides,
   });
 }
 
@@ -351,6 +358,199 @@ describe("moteur", () => {
       const [a, b] = await Promise.all([engine.runTick(), engine.runTick()]);
       const skipped = [a, b].filter((r) => r.error?.includes("concurrent"));
       expect(skipped).toHaveLength(1);
+    } finally {
+      closeDb(db);
+    }
+  });
+});
+
+/** Stratégie de test : elle propose toujours un achat de `MINT`. */
+function alwaysBuyStrategy(): Strategy {
+  return {
+    name: "toujours_achat",
+    requires: [{ timeframe: "15m", bars: 2 }],
+    evaluate: () => ({
+      notes: ["signal de test"],
+      signals: [
+        {
+          assetMint: MINT,
+          symbol: "AAA",
+          side: "buy",
+          confidence: 0.8,
+          expectedMoveBps: 500,
+          ttlMs: 300_000,
+          reason: "achat de test",
+          suggestedSizeUsd: 10,
+        },
+      ],
+    }),
+  };
+}
+
+/** Stratégie de test : elle lit un timeframe que le régime n'utilise pas. */
+function oneHourStrategy(): Strategy {
+  return {
+    name: "une_heure",
+    requires: [{ timeframe: "1h", bars: 48 }],
+    evaluate: () => ({ notes: [], signals: [] }),
+  };
+}
+
+function quotesFor(
+  candles: { ts: number; close: number }[],
+  priceUsd: number | ((c: { close: number }) => number),
+): Map<string, MarketQuote>[] {
+  return candles.map((c) => {
+    const price = typeof priceUsd === "number" ? priceUsd : priceUsd(c);
+    return new Map([
+      [MINT, { priceUsd: price, liquidityUsd: 10_000_000 }],
+      [SOL_MINT, { priceUsd: 100, liquidityUsd: 100_000_000 }],
+      [USDC_MINT, { priceUsd: 1, liquidityUsd: 100_000_000 }],
+    ]);
+  });
+}
+
+describe("moteur — garde-fous", () => {
+  it("réancre un pic d'équité que la courbe ne justifie pas", async () => {
+    const db = makeDb();
+    try {
+      const candles = buildCandles(5);
+      seedCandles(db, candles);
+      const engine = buildEngine(
+        db,
+        new ScriptedMarket(quotesFor(candles, (c) => c.close)),
+        "paper",
+        candles,
+      );
+      await engine.runTick();
+
+      // Le cache porte encore le pic d'un compte antérieur : 1149 $ alors
+      // que la courbe ne dépasse jamais 1000 $. Sans le correctif, le
+      // drawdown affiché est de 14,5 % au lieu de ~0 %.
+      kvSetNumber(db, STATE_KEYS.navPeakUsd, 1149.17, 0);
+      const report = await engine.runTick();
+
+      const guard = report.decisions.find(
+        (d) => d.kind === "guard" && d.line.includes("non attesté"),
+      );
+      expect(guard).toBeDefined();
+      expect(kvGetNumber(db, STATE_KEYS.navPeakUsd) ?? 0).toBeLessThan(1050);
+      expect(report.drawdownPct).toBeLessThan(1);
+    } finally {
+      closeDb(db);
+    }
+  });
+
+  it("laisse les shadows tourner même en kill-switch", async () => {
+    const db = makeDb();
+    try {
+      const candles = buildCandles(10);
+      seedCandles(db, candles);
+      const engine = buildEngine(
+        db,
+        new ScriptedMarket(quotesFor(candles, (c) => c.close)),
+        "paper",
+        candles,
+        {
+          allocator: {
+            db,
+            allocator: CONFIG.allocator,
+            risk: CONFIG.risk,
+            costs: DEFAULT_COST_CONFIG,
+            initialCashUsd: 1000,
+          },
+        },
+      );
+
+      engine.triggerKillSwitch();
+      const report = await engine.runTick();
+
+      // Le livre réel est bloqué…
+      expect(report.blockedBy).toBe("kill_switch");
+      expect(listTrades(db, { mode: "paper" })).toHaveLength(0);
+      // …mais les livres fantômes continuent d'être arbitrés.
+      expect(report.decisions.some((d) => d.kind === "alloc")).toBe(true);
+    } finally {
+      closeDb(db);
+    }
+  });
+
+  it("pose le cooldown à la vente et bloque le rachat immédiat", async () => {
+    const db = makeDb();
+    try {
+      const candles = buildCandles(10);
+      seedCandles(db, candles);
+      // Position ouverte à 2 $ avec un stop à 1,5 $ : le prix courant (1 $)
+      // déclenche la sortie dans ce même tick.
+      addLot(db, MINT, "AAA", 100, 2, 0);
+      setStops(db, MINT, 1.5, 100, 0);
+
+      const cfg: AppConfig = {
+        ...CONFIG,
+        risk: { ...CONFIG.risk, min_time_between_trades_s: 3600 },
+      };
+      const engine = buildEngine(
+        db,
+        new ScriptedMarket(quotesFor(candles, 1)),
+        "paper",
+        candles,
+        { strategies: [alwaysBuyStrategy()] },
+        cfg,
+      );
+
+      const report = await engine.runTick();
+
+      const trades = listTrades(db, { mode: "paper" });
+      expect(trades.filter((t) => t.side === "sell")).toHaveLength(1);
+      // La vente pose le cooldown : la stratégie qui veut rebuyer au même
+      // tick est refusée. C'est le churn (vente → rachat 31 s après).
+      expect(trades.filter((t) => t.side === "buy")).toHaveLength(0);
+      const blocked = report.decisions.find(
+        (d) => d.kind === "reject" && (d.data as { rule?: string } | null)?.rule === "cooldown",
+      );
+      expect(blocked).toBeDefined();
+      expect(kvGetNumber(db, `${STATE_KEYS.lastTradeTsByMint}:${MINT}`)).toBeGreaterThan(0);
+    } finally {
+      closeDb(db);
+    }
+  });
+
+  it("charge les bougies du timeframe de régime", async () => {
+    const db = makeDb();
+    try {
+      const candles = buildCandles(60);
+      seedCandles(db, candles);
+      const ticks = 20;
+      // Seul MINT est coté : le régime n'est classé que pour lui, ce qui
+      // rend l'observation non ambiguë (SOL et USDC n'ont pas de bougies).
+      const quotes = candles.map(
+        (c) => new Map([[MINT, { priceUsd: c.close, liquidityUsd: 10_000_000 }]]),
+      );
+
+      const seen: number[] = [];
+      const engine = buildEngine(db, new ScriptedMarket(quotes), "paper", candles, {
+        // La stratégie lit la 1 h, le régime la 15 m : sans le correctif,
+        // la fenêtre de 15 m n'est jamais chargée et le régime classe
+        // chaque actif avec « historique insuffisant (0 bougies) ».
+        strategies: [oneHourStrategy()],
+        regime: (bars) => {
+          seen.push(bars.length);
+          return {
+            regime: "idle",
+            variationPct: 0,
+            amplitudePct: 0,
+            direction: "none",
+            reason: "test",
+          };
+        },
+      });
+
+      for (let i = 0; i < ticks; i++) await engine.runTick();
+
+      const lastTsMs = START + (ticks - 1) * 900_000;
+      const closed = candles.filter((c) => c.ts <= lastTsMs - 900_000).length;
+      expect(seen.at(-1)).toBe(Math.min(48, closed));
+      expect(seen.at(-1)).toBeGreaterThan(0);
     } finally {
       closeDb(db);
     }

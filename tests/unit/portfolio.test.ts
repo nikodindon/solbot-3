@@ -45,6 +45,40 @@ describe("portefeuille FIFO", () => {
     }
   });
 
+  it("remet le pic à zéro quand une position close rouvre", () => {
+    const db = makeDb();
+    try {
+      addLot(db, "Aa", "AAA", 100, 2, 1000);
+      updatePeak(db, "Aa", 5, 1500); // pic à 5 $
+      const closed = reducePositionFifo(db, "Aa", 100, 3, 2000);
+      expect(closed.position).toBeNull();
+
+      // Rouverture bien plus bas : le pic de l'ancienne position (5 $) ne
+      // doit pas survivre. Il armerait le trailing stop dès l'entrée et la
+      // position sortirait au tick suivant — c'est le churn observé.
+      const reopened = addLot(db, "Aa", "AAA", 50, 1, 3000);
+      expect(reopened.qty).toBeCloseTo(50, 6);
+      expect(reopened.peakPriceUsd).toBeCloseTo(1, 6);
+      expect(reopened.avgEntryUsd).toBeCloseTo(1, 6);
+    } finally {
+      closeDb(db);
+    }
+  });
+
+  it("conserve le pic lors d'un simple ajout", () => {
+    const db = makeDb();
+    try {
+      addLot(db, "Aa", "AAA", 100, 2, 1000);
+      updatePeak(db, "Aa", 5, 1500);
+
+      const added = addLot(db, "Aa", "AAA", 50, 4, 2000);
+      expect(added.qty).toBeCloseTo(150, 6);
+      expect(added.peakPriceUsd).toBeCloseTo(5, 6);
+    } finally {
+      closeDb(db);
+    }
+  });
+
   it("vend les plus anciens lots d'abord", () => {
     const db = makeDb();
     try {
