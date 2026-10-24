@@ -277,6 +277,9 @@ export async function runStart(options: StartOptions = {}): Promise<void> {
   });
 
   const stopPath = getStopFilePath(runtime.root);
+  // Le superviseur doit lire **la même** source de vérité que le moteur :
+  // le fichier STOP, relu à chaque interrogation, pas un drapeau figé.
+  const stopSwitch = new FileStopSwitch(stopPath);
   const engine = new Engine({
     db: runtime.db,
     cfg: runtime.config,
@@ -298,7 +301,7 @@ export async function runStart(options: StartOptions = {}): Promise<void> {
     executor,
     risk,
     cash,
-    stop: new FileStopSwitch(stopPath),
+    stop: stopSwitch,
     clock: () => Date.now(),
   });
 
@@ -326,6 +329,7 @@ export async function runStart(options: StartOptions = {}): Promise<void> {
       });
       kvSetNumber(runtime.db, STATE_KEYS.lastBackupAtMs, info.createdMs);
     },
+    killSwitchExists: () => stopSwitch.exists(),
     version: getVersionInfo().version,
   });
 
