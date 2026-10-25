@@ -1,8 +1,12 @@
 import { SOL_MINT } from "../constants.js";
 import type { DB } from "../state/db.js";
 import { listDecisions } from "../state/decisions.js";
-import { attestNavPeak, listEquity } from "../state/equity.js";
-import { getMergedCandles } from "../state/imported-candles.js";
+import { attestNavPeak, firstEquityPoint, listEquity } from "../state/equity.js";
+import {
+  closeAtOrBefore,
+  getMergedCandles,
+  type ImportedCandle,
+} from "../state/imported-candles.js";
 import { kvGetNumber, kvGet, STATE_KEYS } from "../state/kv.js";
 import { listWatchlist, resolveSymbol } from "../state/market-data.js";
 import { listPositions } from "../state/portfolio-repo.js";
@@ -35,7 +39,7 @@ export interface ChartBundle {
   nav: number[];
   /** Cash seul. */
   cash: number[];
-  /** Référence buy & hold SOL, normalisée sur le NAV initial. */
+  /** Référence buy & hold SOL, normalisée sur le NAV de départ du run. */
   benchmark: number[];
   /** Une série par stratégie en shadow. */
   shadows: { name: string; time: number[]; nav: number[] }[];
@@ -56,6 +60,7 @@ export interface DashboardState {
     positions: number;
     realized: number;
     drawdownPct: number;
+    /** NAV de départ du run — l'origine du PnL affiché. */
     initial: number;
     peak: number;
   };
@@ -141,7 +146,12 @@ export function buildDashboardState(
   const last = equity[equity.length - 1];
   const first = equity[0];
 
-  const initial = first?.navUsd ?? 0;
+  // L'affichage est tronqué (2 000 derniers points) : `first` est le début
+  // de la **fenêtre**, pas le début du run. Tout ce qui se dit « depuis le
+  // début » s'ancre sur ce point-là, sinon le PnL et la référence buy &
+  // hold se rapportent à deux périodes différentes.
+  const runStart = firstEquityPoint(db, cfg.mode) ?? first;
+  const initial = runStart?.navUsd ?? 0;
   const navUsd = last?.navUsd ?? 0;
   const cash = last?.cashUsd ?? 0;
   const realized = last?.realizedPnlUsd ?? 0;
@@ -232,19 +242,26 @@ export function buildDashboardState(
   });
 
   // ── Benchmark buy & hold SOL ─────────────────────────────────────────
-  const solCandles = getMergedCandles(db, SOL_MINT, "1h", {});
-  const solFirst = solCandles[0]?.close ?? null;
-  const solLast = solCandles[solCandles.length - 1]?.close ?? null;
+  //
+  // **Même origine que le NAV** : le SOL est rapporté au cours qu'il avait
+  // au départ du run, et la variation affichée couvre exactement cette
+  // période. Ancrer sur la première bougie importée (trois mois plus tôt)
+  // affichait +33 % pendant que SOL perdait 7 % sur la durée du run — deux
+  // périodes présentées côte à côte comme si elles étaient les mêmes.
+  const runStartMs = runStart?.tsMs ?? first?.tsMs ?? nowMs;
+  const solCandles = getMergedCandles(db, SOL_MINT, "1h", { toMs: nowMs });
+  const solAnchorUsd = closeAtOrBefore(solCandles, runStartMs) ?? solCandles[0]?.close ?? null;
+  const solLastUsd = solCandles[solCandles.length - 1]?.close ?? null;
   const solBuyHoldPct =
-    solFirst !== null && solLast !== null && solFirst > 0
-      ? ((solLast - solFirst) / solFirst) * 100
+    solAnchorUsd !== null && solLastUsd !== null && solAnchorUsd > 0
+      ? ((solLastUsd - solAnchorUsd) / solAnchorUsd) * 100
       : null;
 
   const trades = listTrades(db, { mode: cfg.mode, limit: 10_000 });
   const decisions = listDecisions(db, { limit: 10_000 });
 
   // ── Séries pour les graphiques ───────────────────────────────────────
-  const charts = buildCharts(db, cfg, equity, nowMs);
+  const charts = buildCharts(db, equity, solCandles, solAnchorUsd, initial);
 
   return {
     clock: { now: nowMs, fresh, lastTickAt, lastTickAgeS },
@@ -284,33 +301,32 @@ export function buildDashboardState(
 /**
  * Construit les séries des graphiques.
  *
- * La référence buy & hold est **normalisée sur le NAV initial** : on veut
- * comparer deux courbes dans la même unité, pas deux prix différents.
+ * Les deux courbes partagent **la même origine** (le NAV de départ du run)
+ * : on veut comparer deux courbes dans la même unité, pas deux prix
+ * différents, et pas davantage deux périodes différentes.
  */
 function buildCharts(
   db: DB,
-  cfg: DashboardConfig,
   equity: { tsMs: number; navUsd: number; cashUsd: number }[],
-  nowMs: number,
+  solCandles: ImportedCandle[],
+  solAnchorUsd: number | null,
+  initialNav: number,
 ): ChartBundle {
   const time = equity.map((point) => Math.floor(point.tsMs / 1000));
   const nav = equity.map((point) => point.navUsd);
   const cash = equity.map((point) => point.cashUsd);
 
-  // Buy & hold SOL, normalisé sur le NAV de départ.
-  const initialNav = equity[0]?.navUsd ?? 0;
-  const solCandles = getMergedCandles(db, SOL_MINT, "1h", { toMs: nowMs });
-  const solFirst = solCandles[0]?.close ?? null;
+  // Buy & hold SOL, normalisé sur le NAV de départ du run.
   const benchmark: number[] = [];
-  if (solFirst !== null && solFirst > 0 && initialNav > 0) {
+  if (solAnchorUsd !== null && solAnchorUsd > 0 && initialNav > 0) {
     for (const point of equity) {
       // On prend le dernier close SOL connu à cet instant.
-      let last = solFirst;
+      let last = solAnchorUsd;
       for (const candle of solCandles) {
         if (candle.ts > point.tsMs) break;
         last = candle.close;
       }
-      benchmark.push((last / solFirst) * initialNav);
+      benchmark.push((last / solAnchorUsd) * initialNav);
     }
   }
 
@@ -326,7 +342,6 @@ function buildCharts(
     });
   }
 
-  void cfg;
   return { time, nav, cash, benchmark, shadows };
 }
 

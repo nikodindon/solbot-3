@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { attestNavPeak, insertEquityPoint, listEquity } from "../../src/state/equity.js";
+import {
+  attestNavPeak,
+  firstEquityPoint,
+  insertEquityPoint,
+  listEquity,
+} from "../../src/state/equity.js";
 import { closeDb, openDb, type DB } from "../../src/state/db.js";
 import { kvSetNumber, STATE_KEYS } from "../../src/state/kv.js";
 import { migrate } from "../../src/state/migrations.js";
@@ -100,6 +105,28 @@ describe("pic d'équité attesté par la courbe", () => {
       expect(result.discardedPeakUsd).toBeNull();
       // La courbe du backtest n'entre pas en ligne de compte.
       expect(listEquity(db, { mode: "paper" })).toHaveLength(2);
+    } finally {
+      closeDb(db);
+    }
+  });
+});
+
+describe("départ du run", () => {
+  it("retient le premier point de la courbe, pas celui de la fenêtre affichée", () => {
+    const db = makeDb();
+    try {
+      seedCurve(db, "paper", [1000, 1005, 1003]);
+
+      const first = firstEquityPoint(db, "paper");
+      expect(first?.navUsd).toBe(1000);
+      expect(first?.tsMs).toBe(1_000);
+
+      // La fenêtre d'affichage est tronquée : son premier point est le
+      // début de la fenêtre, pas le début du run.
+      expect(listEquity(db, { mode: "paper", limit: 2 })[0]?.navUsd).toBe(1005);
+
+      // Une autre courbe (ou un mode sans données) n'a pas de départ.
+      expect(firstEquityPoint(db, "backtest")).toBeNull();
     } finally {
       closeDb(db);
     }

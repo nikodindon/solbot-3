@@ -1,6 +1,6 @@
 {
   "name": "solbot3",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "private": true,
   "description": "Bot de trading spot sur Solana (Jupiter) — backtest → paper → dry-run → live encadré.",
   "license": "MIT",

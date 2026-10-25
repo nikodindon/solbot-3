@@ -35,6 +35,23 @@ export interface ImportedCandle {
   source: string;
 }
 
+/**
+ * Dernier `close` connu **au plus tard** à `tsMs`.
+ *
+ * C'est le point d'ancrage d'une référence : « à telle date du run, le
+ * prix était tel ». Utiliser la première bougie de la série (souvent des
+ * mois avant le run) comparerait deux périodes différentes.
+ *
+ * Retourne `null` quand aucune bougie n'est antérieure à `tsMs`.
+ */
+export function closeAtOrBefore(candles: ImportedCandle[], tsMs: number): number | null {
+  for (let i = candles.length - 1; i >= 0; i--) {
+    const candle = candles[i];
+    if (candle !== undefined && candle.ts <= tsMs) return candle.close;
+  }
+  return null;
+}
+
 export function upsertImportedCandles(
   db: DB,
   candles: ImportedCandle[],
@@ -189,9 +206,9 @@ export function getMergedCandles(
  * Supprime la partie de l'historique antérieure à un changement d'échelle.
  *
  * Un *pool migration* change l'unité de cotation du même token : l'historique
- * importé (en旧的 unités) et les prix vivants (en unités courantes) ne sont
- * pas comparables. Mélanger les deux produit un z-score aberrant — c'est
- * exactement ce qui a fait acheter ZCAT sur un « écart de −99,99 % ».
+ * importé (dans l'ancienne unité) et les prix vivants (dans l'unité courante)
+ * ne sont pas comparables. Mélanger les deux produit un z-score aberrant —
+ * c'est ce qui a fait acheter ZCAT sur un « écart de −99,99 % ».
  *
  * On conserve **seulement** la partie postérieure à la rupture : la série
  * redevient homogène, et les indicateurs ont un sens.

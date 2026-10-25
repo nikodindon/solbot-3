@@ -1,7 +1,7 @@
 {
   "name": "solbot3-web",
   "private": true,
-  "version": "0.7.0",
+  "version": "0.7.1",
   "type": "module",
   "description": "Front du dashboard solbot3 — lecture seule.",
   "scripts": {

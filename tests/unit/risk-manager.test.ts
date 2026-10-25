@@ -134,6 +134,29 @@ describe("RiskManager", () => {
     expect(decision.rule).not.toBe("edge_net");
   });
 
+  it("rejette un edge annoncé invraisemblable (cours cassé, pas signal)", () => {
+    // Le cas ZCAT : un écart de −99,99 % à la moyenne annonce un edge de
+    // 999 900 bps. Ce n'est pas une opportunité, c'est une donnée corrompue
+    // (changement d'échelle de pool, prix fantaisiste).
+    const decision = manager().checkEntry(
+      request({ signal: { ...SIGNAL, expectedMoveBps: 999_900 } }),
+      flags(),
+    );
+    expect(decision.allowed).toBe(false);
+    expect(decision.rule).toBe("implausible_edge");
+    expect(decision.message).toMatch(/donnée probablement corrompue/);
+  });
+
+  it("laisse passer un écart de rééversion ordinaire", () => {
+    // Les entrées réelles du run sont à −6,8 % … −9,6 % de la moyenne, soit
+    // 727 à 1 056 bps d'edge annoncé : sous le seuil de 5 000 bps.
+    const decision = manager().checkEntry(
+      request({ signal: { ...SIGNAL, expectedMoveBps: 1_100 } }),
+      flags(),
+    );
+    expect(decision.rule).not.toBe("implausible_edge");
+  });
+
   it("rejette un impact de prix trop élevé", () => {
     const decision = manager().checkEntry(request(), flags({ liquidityUsd: 1_000 }));
     expect(decision.allowed).toBe(false);

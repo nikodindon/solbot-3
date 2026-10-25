@@ -2,7 +2,7 @@
 
 > Bot de trading **spot** sur Solana, propulsé par **Jupiter**, conçu pour tester des stratégies de façon rigoureuse (backtest → paper → dry-run → live encadré), avec gestion du risque stricte, journal complet et dashboard en lecture seule.
 
-**Statut du projet : 🚧 v0.7.0 — moteur complet, aucune configuration validée pour le live.**
+**Statut du projet : 🚧 v0.7.1 — moteur complet, aucune configuration validée pour le live.**
 Toutes les phases 0 à 6 sont livrées, et la phase 7 est partiellement livrée
 (walk-forward automatisé, Trigger API, keystore chiffré). Le bot tourne en
 **paper** ; le **live** reste triplement verrouillé.
@@ -363,13 +363,14 @@ allocator:
 # ── Risque (le RiskManager a toujours le dernier mot) ──────────
 risk:
   max_position_pct: 5           # % du NAV par position
-  max_positions: 6
+  max_positions: 12             # 12 × 5 % = 60 % du capital mobilisable
   max_asset_exposure_pct: 15
   daily_loss_limit_pct: 3       # pause des entrées jusqu'à minuit UTC
   max_drawdown_pct: 15          # kill-switch automatique
   stop_loss_pct: 8
   take_profit_pct: 15
   trailing_stop: { activation_pct: 6, retrace_pct: 3 }
+  max_expected_move_bps: 5000   # edge annoncé > 50 % ⇒ donnée corrompue
   max_price_impact_pct: 1.0
   max_slippage_bps: 100
   min_time_between_trades_s: 300
@@ -458,6 +459,7 @@ database:
 | `status` | État : NAV, positions, pauses, STOP, dernier tick |
 | `kill` / `resume` | Active ou retire le fichier `STOP` |
 | `backup [--list\|--restore <f>]` | Sauvegarde et restauration vérifiée |
+| `maintenance [--plan\|--no-vacuum]` | Dédoublonne le journal, compacte la base |
 | `dashboard` | Démarre seulement le dashboard (lecture de la base) |
 | `guard` | Le live est-il accessible ? (garde-fou : empreinte + critères) |
 | `parity` | Compare le paper et le backtest sur la même période |

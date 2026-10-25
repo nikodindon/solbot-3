@@ -66,13 +66,16 @@ allocator:
 # ── Risque (le RiskManager a toujours le dernier mot) ──────────
 risk:
   max_position_pct: 5           # % du NAV par position
-  max_positions: 6
+  max_positions: 12             # lignes simultanées → 12 × 5 % = 60 % du capital mobilisable
   max_asset_exposure_pct: 15
   daily_loss_limit_pct: 3       # pause des entrées jusqu'à minuit UTC
   max_drawdown_pct: 15          # kill-switch automatique
   stop_loss_pct: 12
   take_profit_pct: 20
   trailing_stop: { activation_pct: 8, retrace_pct: 4 }
+  # Edge annoncé supérieur à 50 % ⇒ donnée corrompue ou écart invraisemblable
+  # à la moyenne : rejet `implausible_edge` (complément de `dropScaleBreaks`).
+  max_expected_move_bps: 5000
   max_price_impact_pct: 1.0
   max_slippage_bps: 100
   min_time_between_trades_s: 300

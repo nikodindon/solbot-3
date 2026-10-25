@@ -2,6 +2,90 @@
 
 Toutes les versions sont datées. Le format suit [Keep a Changelog](https://keepachangelog.com/fr/1.1.0/).
 
+## [0.7.1] — 2026-10-25
+
+Correctifs et réglages tirés de l'observation du run paper (démarré le
+21/10/2026) et des quatre recommandations du bilan du 25/10. Le moteur ne
+change pas de nature : affichage, calibrage, hygiène du journal.
+
+### Corrigé
+
+**1. Le tableau de bord comparait deux périodes différentes** *(recommandation 1)*
+
+- La variation « buy & hold SOL » était calculée depuis la **première bougie
+  importée** (23/07) alors que le NAV partait du 21/10 : le dashboard
+  affichait `+32,9 %` pendant que SOL perdait `7,3 %` sur la durée du run, et
+  la courbe de référence démarrait ~33 % au-dessus de la courbe d'équité.
+- Le PnL, lui, était mesuré depuis le **début de la fenêtre affichée**
+  (2 000 derniers points, ≈ 42 h) : `−0,8 %` au lieu de `−4,2 %`.
+- Les deux s'ancrent désormais au **premier point de la courbe d'équité**
+  (`firstEquityPoint`), et la référence prend le dernier cours SOL connu à
+  cette date (`closeAtOrBefore`). Même origine, même période, deux courbes
+  enfin comparables.
+- Le graphique reste limité à 2 000 points : c'est une limite d'affichage,
+  pas une limite de mesure — c'est écrit dans le guide.
+
+**2. Le journal de décisions doublait à chaque tick** *(recommandation 4)*
+
+- Le portefeuille fantôme et le livre réel produisent la phrase exacte :
+  chaque note était écrite **deux fois**. ~296 000 lignes par jour, dont
+  123 299 groupes de doublons (45 335 le 24/10 seul).
+- Le moteur ignore désormais une ligne déjà enregistrée dans le même tick
+  (même type, stratégie, actif et texte) : la moitié des écritures disparaît
+  sans rien perdre.
+- Nouvelle commande `maintenance` : elle compte les doublons, les supprime
+  (copies exactes, perte nulle), puis compacte la base (`VACUUM`).
+  `--plan` ne fait que compter, `--no-vacuum` saute la compaction. Si le bot
+  ou le dashboard tient la base ouverte, le `VACUUM` échoue **à visage
+  découvert** et le message dit d'arrêter les deux — on ne tue pas un bot
+  pour compacter.
+
+### Changé
+
+**3. Le capital restait à 71 % inactif** *(recommandation 3)*
+
+- `risk.max_positions: 6 → 12`. Six lignes à 5 % du NAV plafonnaient
+  l'exposition à **30 %** du capital : le bot refusait 936 signaux par jour
+  pour `max_positions` pendant que 71 % du cash dormait.
+- 12 × 5 % = 60 % mobilisables. La taille de ligne reste à 5 % : une
+  position qui dérape coûte toujours 5 %, pas davantage, et 40 % de
+  liquidité reste disponible.
+
+**4. Filtre des signaux extrêmes** *(recommandation 2 — vérifié : déjà en place)*
+
+- Le garde-fou demandé existe depuis le `27271c7` (22/10) :
+  `dropScaleBreaks` retire l'historique d'avant un changement d'échelle de
+  pool (la cause exacte du faux signal ZCAT), et le RiskManager refuse tout
+  edge annoncé supérieur à `risk.max_expected_move_bps` (règle
+  `implausible_edge`, « donnée probablement corrompue »).
+- **Rendu explicite** dans `config/config.yaml` (5 000 bps, soit un écart
+  supérieur à ~33 % à la moyenne) et **couvert par deux tests** qui
+  n'existaient pas : le cas ZCAT (−99,99 % → 999 900 bps) est rejeté, les
+  entrées réelles du run (−6,8 % à −9,6 % → 727 à 1 056 bps) passent.
+- Seuil volontairement **non resserré** : OPENAI (−26,85 % → 3 670 bps)
+  reste sous le seuil et la position est à −1,25 %. On ne calibre pas un
+  garde-fou sur une seule observation. Pour bloquer cette classe d'écart,
+  passer `risk.max_expected_move_bps` à `2000`.
+
+### Ajouté
+
+**Les six correctifs du run (24 octobre)** — `3aa587b` et `34d652a`
+
+- Pic d'équité **attesté par la courbe** (`attestNavPeak`) : un pic que la
+  courbe ne justifie pas est réancré au lieu d'être cru les yeux fermés.
+- Kill-switch **relu à la source** à chaque tick : créer ou retirer
+  `data/STOP` prend effet au tick suivant, sans redémarrage.
+- Cooldown posé à la **vente**, pic de prix réinitialisé à la réouverture.
+- Fenêtre de régime chargée sur son propre timeframe : fini les « 0
+  bougies ».
+- `runShadows()` sorti du `else` : les portefeuilles fantômes tournent en
+  toutes circonstances.
+- `FileStopSwitch` partagé entre le moteur et le superviseur : les deux
+  voient le même `data/STOP`.
+
+- **10 tests ajoutés** : 258 → 268, toutes suites vertes. Typecheck, lint et
+  formatage propres.
+
 ## [0.7.0] — 2026-10-22
 
 Première version complète du moteur : de la configuration au dashboard.
@@ -119,4 +203,5 @@ qui semblaient excellentes.
 - Service de signature distant, sous-comptes par stratégie, ordres DCA Trigger.
 - Évaluation documentée de la copie de wallets (recherche seulement).
 
+[0.7.1]: https://github.com/nikodindon/solbot-3/releases/tag/v0.7.1
 [0.7.0]: https://github.com/nikodindon/solbot-3/releases/tag/v0.7.0

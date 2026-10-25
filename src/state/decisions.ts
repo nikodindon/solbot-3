@@ -1,5 +1,5 @@
 import type { DB } from "./db.js";
-import { queryAll } from "./sql.js";
+import { queryAll, queryGet } from "./sql.js";
 
 /**
  * Journal de décisions.
@@ -57,6 +57,62 @@ export function insertDecisions(db: DB, decisions: Decision[]): void {
     db.exec("ROLLBACK");
     throw error;
   }
+}
+
+export interface DecisionsJournalStats {
+  /** Total des lignes du journal. */
+  total: number;
+  /** Groupes contenant au moins deux lignes strictement identiques. */
+  duplicateGroups: number;
+  /** Lignes redondantes (total − une par groupe). */
+  duplicateRows: number;
+}
+
+/**
+ * État du journal : combien de lignes sont strictement redondantes.
+ *
+ * « Strictement identique » = même tick, même type, même stratégie, même
+ * actif, même texte. Ces doublons viennent de ce que le portefeuille
+ * fantôme et le livre réel écrivent la même phrase — ils n'apportent rien
+ * et doublent le poids de la table.
+ */
+export function decisionsJournalStats(db: DB): DecisionsJournalStats {
+  const row = queryGet<{ total: number; groups: number; dup_rows: number | null }>(
+    db,
+    `SELECT (SELECT COUNT(*) FROM decisions) AS total,
+            COUNT(*) AS groups,
+            COALESCE(SUM(c - 1), 0) AS dup_rows
+       FROM (SELECT COUNT(*) AS c
+               FROM decisions
+              GROUP BY ts_ms, tick_id, kind, strategy, mint, line
+             HAVING COUNT(*) > 1)`,
+  );
+  return {
+    total: row?.total ?? 0,
+    duplicateGroups: row?.groups ?? 0,
+    duplicateRows: row?.dup_rows ?? 0,
+  };
+}
+
+/**
+ * Supprime les décisions strictement redondantes, en conservant la première
+ * écrite de chaque groupe.
+ *
+ * Perte nulle : les lignes supprimées sont des copies exactes. Renvoie le
+ * nombre de lignes supprimées.
+ */
+export function dedupeDecisions(db: DB): number {
+  const result = db
+    .prepare(
+      `DELETE FROM decisions
+        WHERE id NOT IN (
+          SELECT MIN(id)
+            FROM decisions
+           GROUP BY ts_ms, tick_id, kind, strategy, mint, line
+        )`,
+    )
+    .run();
+  return Number(result.changes);
 }
 
 export function listDecisions(

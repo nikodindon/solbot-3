@@ -19,6 +19,7 @@ volontairement courte : sous stress, on lit des étapes, pas des paragraphes.
 | [Divergence de réconciliation](#divergence-de-réconciliation) |
 | [Fuite de clé privée](#fuite-de-clé-privée) |
 | [Le bot a perdu trop d'argent](#le-bot-a-perdu-trop-dargent) |
+| [La base grossit trop vite](#la-base-grossit-trop-vite) |
 | [La base est corrompue](#la-base-est-corrompue) |
 
 ---
@@ -126,6 +127,33 @@ journalisée.
    (règle de rejet la plus fréquente, stratégie pilote, régime dominant).
 3. Ne pas modifier les paramètres à chaud pour « rattraper » : la correction
    se fait sur le backtest, puis en shadow.
+
+## La base grossit trop vite
+
+```bash
+du -h data/solbot3.sqlite          # la base
+du -sh data/backups/               # les sauvegardes
+df -h .                            # le disque
+```
+
+La table `decisions` est la seule à s'écrire à chaque tick (une à deux
+lignes par actif). Deux causes distinctes, deux remèdes :
+
+1. **Doublons** — la même phrase écrite par le portefeuille fantôme et par
+   le livre réel. C'est corrigé depuis la v0.7.1, mais les doublons déjà
+   écrits restent :
+   ```bash
+   npm run solbot3 -- maintenance --plan    # combien, sans rien toucher
+   npm run solbot3 -- maintenance           # suppression + VACUUM
+   ```
+   `VACUUM` exige un accès exclusif : **arrêter le bot et le dashboard**,
+   sinon la commande échoue et le dit. Perte nulle : seules des copies
+   exactes sont supprimées.
+2. **Rotation des sauvegardes** — `data/backups/` grossit aussi. Vérifier
+   avec `backup --list` ; la rotation quotidienne est automatique.
+
+Si le disque approche de la limite, la priorité est la sauvegarde, pas la
+compaction : un `df -h` à 100 % empêche SQLite d'écrire son journal.
 
 ## La base est corrompue
 

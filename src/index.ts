@@ -15,6 +15,7 @@ import { runDoctor, printDoctor } from "./cli/doctor.js";
 import { runGuard } from "./cli/guard.js";
 import { runLabCommand } from "./cli/lab.js";
 import { runInit } from "./cli/init.js";
+import { runMaintenance } from "./cli/maintenance.js";
 import { runParity } from "./cli/parity.js";
 import { runPaths } from "./cli/paths.js";
 import { runPrice } from "./cli/price.js";
@@ -251,6 +252,24 @@ program
         root: getProjectRoot(),
         list: options.list === true,
         restore: options.restore,
+      });
+    } catch (error) {
+      console.error(`  ✘ ${messageOf(error)}`);
+      process.exitCode = 1;
+    }
+  });
+
+program
+  .command("maintenance")
+  .description("dédoublonne le journal de décisions et compacte la base (VACUUM)")
+  .option("--plan", "ne fait que compter, sans rien supprimer", false)
+  .option("--no-vacuum", "dédoublonne sans compacter")
+  .action((options: { plan?: boolean; vacuum?: boolean }) => {
+    try {
+      runMaintenance({
+        root: getProjectRoot(),
+        plan: options.plan === true,
+        noVacuum: options.vacuum === false,
       });
     } catch (error) {
       console.error(`  ✘ ${messageOf(error)}`);

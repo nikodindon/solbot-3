@@ -91,6 +91,38 @@ export function listEquity(
   }));
 }
 
+/**
+ * Premier point d'équité d'un mode : le **départ du run**.
+ *
+ * `listEquity` est limité aux N derniers points (fenêtre d'affichage) :
+ * son premier élément n'est donc pas le début du run. Pour un chiffre
+ * « depuis le départ » — PnL cumulé, référence buy & hold — il faut ce
+ * point-ci, qui ne dépend d'aucun limit.
+ */
+export function firstEquityPoint(db: DB, mode: string): EquityPoint | null {
+  const row = queryGet<{
+    mode: string;
+    ts_ms: number;
+    tick_id: number;
+    nav_usd: number;
+    cash_usd: number;
+    positions_usd: number;
+    realized_pnl_usd: number;
+    drawdown_pct: number;
+  }>(db, `SELECT * FROM equity_curve WHERE mode = ? ORDER BY ts_ms ASC LIMIT 1`, mode);
+  if (row === undefined || row === null) return null;
+  return {
+    mode: row.mode,
+    tsMs: row.ts_ms,
+    tickId: row.tick_id,
+    navUsd: row.nav_usd,
+    cashUsd: row.cash_usd,
+    positionsUsd: row.positions_usd,
+    realizedPnlUsd: row.realized_pnl_usd,
+    drawdownPct: row.drawdown_pct,
+  };
+}
+
 /** Nombre de points d'équité pour un mode. */
 export function equityCount(db: DB, mode: string): number {
   const row = queryGet<{ n: number }>(

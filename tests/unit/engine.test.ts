@@ -16,7 +16,7 @@ import { RiskManager } from "../../src/risk/risk-manager.js";
 import { enabledStrategies } from "../../src/strategies/registry.js";
 import type { Strategy } from "../../src/strategies/types.js";
 import { closeDb, openDb, type DB } from "../../src/state/db.js";
-import { listDecisions } from "../../src/state/decisions.js";
+import { decisionsJournalStats, listDecisions } from "../../src/state/decisions.js";
 import { listEquity } from "../../src/state/equity.js";
 import { kvGetNumber, kvSetNumber, STATE_KEYS } from "../../src/state/kv.js";
 import { upsertImportedCandles } from "../../src/state/imported-candles.js";
@@ -470,6 +470,41 @@ describe("moteur — garde-fous", () => {
       expect(listTrades(db, { mode: "paper" })).toHaveLength(0);
       // …mais les livres fantômes continuent d'être arbitrés.
       expect(report.decisions.some((d) => d.kind === "alloc")).toBe(true);
+    } finally {
+      closeDb(db);
+    }
+  });
+
+  it("n'écrit pas deux fois la note que le shadow et le livre réel partagent", async () => {
+    const db = makeDb();
+    try {
+      const candles = buildCandles(10);
+      seedCandles(db, candles);
+      const engine = buildEngine(
+        db,
+        new ScriptedMarket(quotesFor(candles, (c) => c.close)),
+        "paper",
+        candles,
+        {
+          allocator: {
+            db,
+            allocator: CONFIG.allocator,
+            risk: CONFIG.risk,
+            costs: DEFAULT_COST_CONFIG,
+            initialCashUsd: 1000,
+          },
+          strategies: [alwaysBuyStrategy()],
+        },
+      );
+
+      const report = await engine.runTick();
+
+      // La stratégie tourne deux fois — en portefeuille fantôme puis sur le
+      // livre réel — et rend la même phrase. Sans garde-fou, chaque note est
+      // écrite en double et le journal double à chaque tick.
+      const notes = report.decisions.filter((d) => d.line === "signal de test");
+      expect(notes).toHaveLength(1);
+      expect(decisionsJournalStats(db).duplicateRows).toBe(0);
     } finally {
       closeDb(db);
     }

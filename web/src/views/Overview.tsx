@@ -104,7 +104,7 @@ export function OverviewView({ state }: { state: DashboardState | null }) {
           label="Buy & hold SOL"
           value={pct(state.benchmarks.solBuyHoldPct)}
           tone={classFor(state.benchmarks.solBuyHoldPct)}
-          hint="référence"
+          hint="depuis le début du run"
         />
       </div>
 

@@ -121,6 +121,15 @@ vous l'exposez au réseau.
 > L'onglet **Décisions** est le plus utile. Quand une position s'ouvre, vous
 > y lisez la raison exacte, et le motif exact d'un refus.
 
+**Ce que mesurent les chiffres.** Le **PnL** et la **référence buy & hold SOL**
+partent tous les deux du **premier point de la courbe d'équité**, c'est-à-dire
+du début du run : même origine, même période, les deux sont donc comparables.
+Le graphique, lui, n'affiche que les **2 000 derniers points** (≈ 42 h) pour
+rester lisible — c'est une limite d'affichage, pas une limite de mesure. Si
+les deux courbes ne démarrent pas au même endroit, c'est que le NAV a été
+tranché en cours de route et que vous regardez une fenêtre plus courte que
+celle de la référence.
+
 ---
 
 ## 6. Tester une stratégie (c'est le cœur du projet)
@@ -238,6 +247,24 @@ branché.
 Le rapport HTML est un **fichier unique** dans `data/reports/`, ouvrable dans
 un navigateur, sans dépendance — pratique le matin.
 
+### Entretien du journal
+
+Le journal de décisions grossit vite : c'est la table la plus écrite du
+projet (une à deux lignes par actif et par tick).
+
+```bash
+npm run solbot3 -- maintenance --plan   # combien de doublons ? (rien n'est touché)
+npm run solbot3 -- maintenance          # supprime les doublons puis compacte
+npm run solbot3 -- maintenance --no-vacuum  # sans la compaction
+```
+
+Les doublons sont des **copies exactes** (la même phrase écrite par le
+portefeuille fantôme et par le livre réel) : la suppression ne perd rien.
+Le `VACUUM` réécrit la base sans ses pages libérées et demande un accès
+exclusif — **arrêtez le bot et le dashboard avant** : sinon la commande
+échoue et le message vous le dit, au lieu de forcer. Une fois par semaine
+suffit.
+
 ---
 
 ## 9. Sauvegardes
@@ -306,6 +333,7 @@ Refusé tant que les trois conditions ne sont pas réunies :
 | le backtest dit « aucune bougie » | historique non importé | `backtest import --days 90` d'abord |
 | `EADDRINUSE` | un autre dashboard tourne | changez le port : `--port 4300` |
 | le paper ne fait rien | historique de bougies insuffisant | les stratégies ont besoin de 27 bougies 15 m (≈ 7 h de collecte) |
+| la base grossit de 60 à 80 Mo par jour | journal de décisions jamais dédoublonné | `maintenance` (voir §8), et un `backup --list` pour vérifier la rotation |
 
 Le [runbook](runbook.md) détaille les procédures d'incident.
 
@@ -358,6 +386,7 @@ npm run solbot3 -- backtest optimize --days 90 --windows 3 --timeframe 1h
 | `swap` | swap manuel avec les mêmes garde-fous |
 | `paths` | compare les chemins d'exécution (A/B sur swaps réels) |
 | `backup` | sauvegarde, liste, restauration |
+| `maintenance` | dédoublonne le journal, compacte la base |
 | `version` | version, Node, plateforme |
 
 ---

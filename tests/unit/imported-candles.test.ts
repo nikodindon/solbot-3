@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { closeDb, openDb } from "../../src/state/db.js";
 import {
+  closeAtOrBefore,
   getMergedCandles,
   importedCoverage,
   upsertImportedCandles,
@@ -121,5 +122,16 @@ describe("bougies importées", () => {
     } finally {
       closeDb(db);
     }
+  });
+
+  it("trouve le dernier close connu au plus tard à une date", () => {
+    const rows = [imported(0, 1), imported(900_000, 2), imported(1_800_000, 3)];
+
+    expect(closeAtOrBefore(rows, 0)).toBe(1);
+    expect(closeAtOrBefore(rows, 1_799_999)).toBe(2);
+    expect(closeAtOrBefore(rows, 1_800_000)).toBe(3);
+    // Avant toute donnée, ou sur une série vide : rien à dire.
+    expect(closeAtOrBefore(rows, -1)).toBeNull();
+    expect(closeAtOrBefore([], 0)).toBeNull();
   });
 });

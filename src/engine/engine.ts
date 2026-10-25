@@ -129,6 +129,10 @@ export class Engine {
     this.busy = true;
 
     const decisions: Decision[] = [];
+    // Le portefeuille fantôme et le livre réel produisent la même ligne
+    // (même stratégie, même instantané) : sans ce jeu, chaque note est
+    // écrite deux fois et le journal double à chaque tick.
+    const recorded = new Set<string>();
     const tsMs = this.deps.clock();
     this.tickId += 1;
     const tickId = this.tickId;
@@ -138,6 +142,10 @@ export class Engine {
       line: string,
       options: { strategy?: string; mint?: string; data?: Record<string, unknown> } = {},
     ): void => {
+      const key = `${kind}\u0000${options.strategy ?? ""}\u0000${options.mint ?? ""}\u0000${line}`;
+      if (recorded.has(key)) return;
+      recorded.add(key);
+
       const decision: Decision = {
         tsMs,
         tickId,
